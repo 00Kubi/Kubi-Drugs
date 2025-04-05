@@ -14,6 +14,7 @@ local Translations = {
         invalid_security_token = 'Błąd bezpieczeństwa: nieprawidłowy token',
         security_error = 'Wykryto próbę manipulacji. Zgłoszono do administracji.',
         dealer_busy = 'Ten dealer jest zajęty. Spróbuj ponownie za chwilę.',
+        not_in_zone = 'Nie jesteś w odpowiedniej strefie'
     },
     success = {
         harvested = 'Zebrałeś %{amount}x %{item}',

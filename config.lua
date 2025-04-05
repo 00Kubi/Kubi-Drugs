@@ -90,44 +90,6 @@ Config.Drugs = {
     }
 }
 
--- Lokalizacje narkotyków
-Config.Locations = {
-    ['weed'] = {
-        harvest = {
-            {coords = vector3(2222.710, 5577.859, 53.84), radius = 20.0},
-            {coords = vector3(2213.098, 5577.585, 53.89), radius = 15.0}
-        },
-        process = {
-            {coords = vector3(1391.943, 3605.709, 38.94), radius = 10.0}
-        },
-        package = {
-            {coords = vector3(1465.949, 6344.453, 23.83), radius = 10.0}
-        }
-    },
-    ['cocaine'] = {
-        harvest = {
-            {coords = vector3(5433.478, -5156.901, 78.92), radius = 20.0}
-        },
-        process = {
-            {coords = vector3(1087.141, -3195.921, -38.99), radius = 10.0}
-        },
-        package = {
-            {coords = vector3(1090.766, -3196.646, -38.99), radius = 10.0}
-        }
-    },
-    ['meth'] = {
-        harvest = {
-            {coords = vector3(1454.222, -1651.491, 68.15), radius = 20.0}
-        },
-        process = {
-            {coords = vector3(978.150, -147.438, 74.23), radius = 10.0}
-        },
-        package = {
-            {coords = vector3(982.359, -145.292, 74.23), radius = 10.0}
-        }
-    }
-}
-
 -- Konfiguracja sprzedawców
 Config.Dealers = {
     {

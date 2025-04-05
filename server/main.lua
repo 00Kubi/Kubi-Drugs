@@ -1,5 +1,150 @@
 local QBCore = exports['qb-core']:GetCoreObject()
 
+-- Tabela przechowująca lokalizacje narkotyków - dostępna TYLKO po stronie serwera
+local DrugLocations = {
+    ['weed'] = {
+        harvest = {
+            {coords = vector3(2222.710, 5577.859, 53.84), radius = 20.0},
+            {coords = vector3(2213.098, 5577.585, 53.89), radius = 15.0}
+        },
+        process = {
+            {coords = vector3(1391.943, 3605.709, 38.94), radius = 10.0}
+        },
+        package = {
+            {coords = vector3(1465.949, 6344.453, 23.83), radius = 10.0}
+        }
+    },
+    ['cocaine'] = {
+        harvest = {
+            {coords = vector3(5433.478, -5156.901, 78.92), radius = 20.0}
+        },
+        process = {
+            {coords = vector3(1087.141, -3195.921, -38.99), radius = 10.0}
+        },
+        package = {
+            {coords = vector3(1090.766, -3196.646, -38.99), radius = 10.0}
+        }
+    },
+    ['meth'] = {
+        harvest = {
+            {coords = vector3(1454.222, -1651.491, 68.15), radius = 20.0}
+        },
+        process = {
+            {coords = vector3(978.150, -147.438, 74.23), radius = 10.0}
+        },
+        package = {
+            {coords = vector3(982.359, -145.292, 74.23), radius = 10.0}
+        }
+    }
+}
+
+-- Funkcja do prostego szyfrowania koordynatów (dla utrudnienia dump'owania)
+local function EncryptCoords(coords, salt)
+    local encryptedCoords = {}
+    local saltValue = string.byte(salt, 1, 1) or 10
+    
+    encryptedCoords.x = coords.x + saltValue
+    encryptedCoords.y = coords.y - saltValue
+    encryptedCoords.z = coords.z * (saltValue * 0.01)
+    
+    return encryptedCoords
+end
+
+-- Funkcja deszyfrująca koordynaty
+local function DecryptCoords(coords, salt)
+    local decryptedCoords = {}
+    local saltValue = string.byte(salt, 1, 1) or 10
+    
+    decryptedCoords.x = coords.x - saltValue
+    decryptedCoords.y = coords.y + saltValue
+    decryptedCoords.z = coords.z / (saltValue * 0.01)
+    
+    return vector3(decryptedCoords.x, decryptedCoords.y, decryptedCoords.z)
+end
+
+-- Funkcja generująca unikalny salt dla każdego gracza (dla dodatkowego bezpieczeństwa)
+local function GeneratePlayerSalt(playerId)
+    local player = QBCore.Functions.GetPlayer(playerId)
+    if not player then return "defaultsalt" end
+    
+    local license = QBCore.Functions.GetIdentifier(playerId, 'license') or ""
+    local uniqueSalt = license:sub(-10) .. playerId
+    
+    return uniqueSalt
+end
+
+-- Funkcja wysyłająca zaszyfrowane lokalizacje do klienta
+local function SendEncryptedLocationToClient(playerId, drugType, locationType, locationIndex)
+    local salt = GeneratePlayerSalt(playerId)
+    
+    if not DrugLocations[drugType] or not DrugLocations[drugType][locationType] then return end
+    
+    local location = DrugLocations[drugType][locationType][locationIndex]
+    if not location then return end
+    
+    local encryptedCoords = EncryptCoords(location.coords, salt)
+    
+    -- Wysyłamy tylko tę jedną lokalizację, której gracz potrzebuje
+    TriggerClientEvent('kubi-drugs:client:receiveLocation', playerId, {
+        drugType = drugType,
+        locationType = locationType,
+        locationIndex = locationIndex,
+        coords = encryptedCoords,
+        radius = location.radius,
+        salt = salt
+    })
+end
+
+-- Callback zwracający zaszyfrowane lokalizacje
+QBCore.Functions.CreateCallback('kubi-drugs:server:requestLocations', function(source, callback, drugType)
+    local salt = GeneratePlayerSalt(source)
+    local encryptedLocations = {}
+    
+    if not DrugLocations[drugType] then
+        callback(false)
+        return
+    end
+    
+    -- Przygotowujemy tablicę zawierającą TYLKO typy lokalizacji i ilość punktów (bez koordynatów)
+    for locationType, locations in pairs(DrugLocations[drugType]) do
+        encryptedLocations[locationType] = {}
+        for i = 1, #locations do
+            -- Wysyłamy tylko informację o istnieniu punktu, bez koordynatów
+            encryptedLocations[locationType][i] = {
+                exists = true,
+                index = i
+            }
+        end
+    end
+    
+    callback(encryptedLocations, salt)
+end)
+
+-- Callback do sprawdzania czy gracz jest w odpowiedniej strefie
+QBCore.Functions.CreateCallback('kubi-drugs:server:checkPlayerInZone', function(source, callback, drugType, locationType, locationIndex, reportedPosition)
+    local salt = GeneratePlayerSalt(source)
+    
+    if not DrugLocations[drugType] or not DrugLocations[drugType][locationType] or not DrugLocations[drugType][locationType][locationIndex] then
+        callback(false)
+        return
+    end
+    
+    local location = DrugLocations[drugType][locationType][locationIndex]
+    local actualPosition = GetEntityCoords(GetPlayerPed(source))
+    
+    -- Sprawdzamy czy raportowana pozycja jest bliska faktycznej pozycji (anti-cheat)
+    local positionDifference = #(vector3(reportedPosition.x, reportedPosition.y, reportedPosition.z) - actualPosition)
+    if positionDifference > 5.0 then
+        LogSecurityViolation(source, "Fałszywe raportowanie pozycji przy sprawdzaniu strefy")
+        callback(false)
+        return
+    end
+    
+    -- Sprawdzamy czy gracz jest w strefie
+    local distance = #(actualPosition - location.coords)
+    callback(distance <= location.radius)
+end)
+
 -- Sprawdzanie ilości policjantów na służbie
 local function GetCopCount()
     local count = 0
@@ -20,8 +165,66 @@ QBCore.Functions.CreateCallback('kubi-drugs:server:getSecurityToken', function(s
     callback(token)
 end)
 
+-- Callback pobierający konkretną lokalizację po podaniu indeksu
+QBCore.Functions.CreateCallback('kubi-drugs:server:getLocationByIndex', function(source, callback, token, drugType, locationType, locationIndex)
+    -- Weryfikacja tokenu bezpieczeństwa
+    if not VerifySecurityToken(source, token) then
+        callback(false)
+        return
+    end
+    
+    -- Resetujemy token po użyciu
+    ResetSecurityToken(source)
+    
+    -- Wysyłamy zaszyfrowaną lokalizację
+    SendEncryptedLocationToClient(source, drugType, locationType, locationIndex)
+    callback(true)
+end)
+
+-- Zmodyfikowana funkcja weryfikacji strefy używająca nowego systemu
+function IsPlayerInZone(playerId, drugType, zoneType, locationIndex)
+    local player = QBCore.Functions.GetPlayer(playerId)
+    if not player then return false end
+    
+    if not DrugLocations[drugType] or not DrugLocations[drugType][zoneType] then return false end
+    
+    -- Jeśli nie podano konkretnego indeksu, sprawdzamy wszystkie lokalizacje tego typu
+    if not locationIndex then
+        local playerCoords = GetEntityCoords(GetPlayerPed(playerId))
+        local inZone = false
+        
+        for idx, location in ipairs(DrugLocations[drugType][zoneType]) do
+            local distance = #(playerCoords - location.coords)
+            if distance <= location.radius then
+                inZone = true
+                break
+            end
+        end
+        
+        if not inZone then
+            LogSecurityViolation(playerId, "Próba akcji " .. zoneType .. " dla " .. drugType .. " poza wyznaczoną strefą")
+        end
+        
+        return inZone
+    else
+        -- Sprawdzamy konkretną lokalizację po indeksie
+        local location = DrugLocations[drugType][zoneType][locationIndex]
+        if not location then return false end
+        
+        local playerCoords = GetEntityCoords(GetPlayerPed(playerId))
+        local distance = #(playerCoords - location.coords)
+        local inZone = distance <= location.radius
+        
+        if not inZone then
+            LogSecurityViolation(playerId, "Próba akcji " .. zoneType .. " dla " .. drugType .. " poza wyznaczoną strefą (indeks: " .. locationIndex .. ")")
+        end
+        
+        return inZone
+    end
+end
+
 -- Event do zbierania narkotyków
-RegisterSecuredEvent('kubi-drugs:server:harvestDrug', function(source, drugType)
+RegisterSecuredEvent('kubi-drugs:server:harvestDrug', function(source, drugType, locationIndex)
     local Player = QBCore.Functions.GetPlayer(source)
     if not Player then return end
     
@@ -32,7 +235,7 @@ RegisterSecuredEvent('kubi-drugs:server:harvestDrug', function(source, drugType)
     end
     
     -- Sprawdzanie czy gracz jest w odpowiedniej strefie
-    if not IsPlayerInZone(source, drugType, "harvest") then
+    if not IsPlayerInZone(source, drugType, "harvest", locationIndex) then
         return
     end
     
@@ -61,7 +264,7 @@ RegisterSecuredEvent('kubi-drugs:server:harvestDrug', function(source, drugType)
 end)
 
 -- Event do przetwarzania narkotyków
-RegisterSecuredEvent('kubi-drugs:server:processDrug', function(source, drugType)
+RegisterSecuredEvent('kubi-drugs:server:processDrug', function(source, drugType, locationIndex)
     local Player = QBCore.Functions.GetPlayer(source)
     if not Player then return end
     
@@ -72,7 +275,7 @@ RegisterSecuredEvent('kubi-drugs:server:processDrug', function(source, drugType)
     end
     
     -- Sprawdzanie czy gracz jest w odpowiedniej strefie
-    if not IsPlayerInZone(source, drugType, "process") then
+    if not IsPlayerInZone(source, drugType, "process", locationIndex) then
         return
     end
     
@@ -113,7 +316,7 @@ RegisterSecuredEvent('kubi-drugs:server:processDrug', function(source, drugType)
 end)
 
 -- Event do pakowania narkotyków
-RegisterSecuredEvent('kubi-drugs:server:packageDrug', function(source, drugType)
+RegisterSecuredEvent('kubi-drugs:server:packageDrug', function(source, drugType, locationIndex)
     local Player = QBCore.Functions.GetPlayer(source)
     if not Player then return end
     
@@ -124,7 +327,7 @@ RegisterSecuredEvent('kubi-drugs:server:packageDrug', function(source, drugType)
     end
     
     -- Sprawdzanie czy gracz jest w odpowiedniej strefie
-    if not IsPlayerInZone(source, drugType, "package") then
+    if not IsPlayerInZone(source, drugType, "package", locationIndex) then
         return
     end
     
