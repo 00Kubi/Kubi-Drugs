@@ -1,150 +1,5 @@
 local QBCore = exports['qb-core']:GetCoreObject()
 
--- Tabela przechowująca lokalizacje narkotyków - dostępna TYLKO po stronie serwera
-local DrugLocations = {
-    ['weed'] = {
-        harvest = {
-            {coords = vector3(2222.710, 5577.859, 53.84), radius = 20.0},
-            {coords = vector3(2213.098, 5577.585, 53.89), radius = 15.0}
-        },
-        process = {
-            {coords = vector3(1391.943, 3605.709, 38.94), radius = 10.0}
-        },
-        package = {
-            {coords = vector3(1465.949, 6344.453, 23.83), radius = 10.0}
-        }
-    },
-    ['cocaine'] = {
-        harvest = {
-            {coords = vector3(5433.478, -5156.901, 78.92), radius = 20.0}
-        },
-        process = {
-            {coords = vector3(1087.141, -3195.921, -38.99), radius = 10.0}
-        },
-        package = {
-            {coords = vector3(1090.766, -3196.646, -38.99), radius = 10.0}
-        }
-    },
-    ['meth'] = {
-        harvest = {
-            {coords = vector3(1454.222, -1651.491, 68.15), radius = 20.0}
-        },
-        process = {
-            {coords = vector3(978.150, -147.438, 74.23), radius = 10.0}
-        },
-        package = {
-            {coords = vector3(982.359, -145.292, 74.23), radius = 10.0}
-        }
-    }
-}
-
--- Funkcja do prostego szyfrowania koordynatów (dla utrudnienia dump'owania)
-local function EncryptCoords(coords, salt)
-    local encryptedCoords = {}
-    local saltValue = string.byte(salt, 1, 1) or 10
-    
-    encryptedCoords.x = coords.x + saltValue
-    encryptedCoords.y = coords.y - saltValue
-    encryptedCoords.z = coords.z * (saltValue * 0.01)
-    
-    return encryptedCoords
-end
-
--- Funkcja deszyfrująca koordynaty
-local function DecryptCoords(coords, salt)
-    local decryptedCoords = {}
-    local saltValue = string.byte(salt, 1, 1) or 10
-    
-    decryptedCoords.x = coords.x - saltValue
-    decryptedCoords.y = coords.y + saltValue
-    decryptedCoords.z = coords.z / (saltValue * 0.01)
-    
-    return vector3(decryptedCoords.x, decryptedCoords.y, decryptedCoords.z)
-end
-
--- Funkcja generująca unikalny salt dla każdego gracza (dla dodatkowego bezpieczeństwa)
-local function GeneratePlayerSalt(playerId)
-    local player = QBCore.Functions.GetPlayer(playerId)
-    if not player then return "defaultsalt" end
-    
-    local license = QBCore.Functions.GetIdentifier(playerId, 'license') or ""
-    local uniqueSalt = license:sub(-10) .. playerId
-    
-    return uniqueSalt
-end
-
--- Funkcja wysyłająca zaszyfrowane lokalizacje do klienta
-local function SendEncryptedLocationToClient(playerId, drugType, locationType, locationIndex)
-    local salt = GeneratePlayerSalt(playerId)
-    
-    if not DrugLocations[drugType] or not DrugLocations[drugType][locationType] then return end
-    
-    local location = DrugLocations[drugType][locationType][locationIndex]
-    if not location then return end
-    
-    local encryptedCoords = EncryptCoords(location.coords, salt)
-    
-    -- Wysyłamy tylko tę jedną lokalizację, której gracz potrzebuje
-    TriggerClientEvent('kubi-drugs:client:receiveLocation', playerId, {
-        drugType = drugType,
-        locationType = locationType,
-        locationIndex = locationIndex,
-        coords = encryptedCoords,
-        radius = location.radius,
-        salt = salt
-    })
-end
-
--- Callback zwracający zaszyfrowane lokalizacje
-QBCore.Functions.CreateCallback('kubi-drugs:server:requestLocations', function(source, callback, drugType)
-    local salt = GeneratePlayerSalt(source)
-    local encryptedLocations = {}
-    
-    if not DrugLocations[drugType] then
-        callback(false)
-        return
-    end
-    
-    -- Przygotowujemy tablicę zawierającą TYLKO typy lokalizacji i ilość punktów (bez koordynatów)
-    for locationType, locations in pairs(DrugLocations[drugType]) do
-        encryptedLocations[locationType] = {}
-        for i = 1, #locations do
-            -- Wysyłamy tylko informację o istnieniu punktu, bez koordynatów
-            encryptedLocations[locationType][i] = {
-                exists = true,
-                index = i
-            }
-        end
-    end
-    
-    callback(encryptedLocations, salt)
-end)
-
--- Callback do sprawdzania czy gracz jest w odpowiedniej strefie
-QBCore.Functions.CreateCallback('kubi-drugs:server:checkPlayerInZone', function(source, callback, drugType, locationType, locationIndex, reportedPosition)
-    local salt = GeneratePlayerSalt(source)
-    
-    if not DrugLocations[drugType] or not DrugLocations[drugType][locationType] or not DrugLocations[drugType][locationType][locationIndex] then
-        callback(false)
-        return
-    end
-    
-    local location = DrugLocations[drugType][locationType][locationIndex]
-    local actualPosition = GetEntityCoords(GetPlayerPed(source))
-    
-    -- Sprawdzamy czy raportowana pozycja jest bliska faktycznej pozycji (anti-cheat)
-    local positionDifference = #(vector3(reportedPosition.x, reportedPosition.y, reportedPosition.z) - actualPosition)
-    if positionDifference > 5.0 then
-        LogSecurityViolation(source, "Fałszywe raportowanie pozycji przy sprawdzaniu strefy")
-        callback(false)
-        return
-    end
-    
-    -- Sprawdzamy czy gracz jest w strefie
-    local distance = #(actualPosition - location.coords)
-    callback(distance <= location.radius)
-end)
-
 -- Sprawdzanie ilości policjantów na służbie
 local function GetCopCount()
     local count = 0
@@ -159,290 +14,434 @@ local function GetCopCount()
     return count
 end
 
--- Callback pobierający token bezpieczeństwa dla klienta
+-- Callback do generowania tokenów bezpieczeństwa
 QBCore.Functions.CreateCallback('kubi-drugs:server:getSecurityToken', function(source, callback)
     local token = GenerateSecurityToken(source)
     callback(token)
 end)
 
--- Callback pobierający konkretną lokalizację po podaniu indeksu
-QBCore.Functions.CreateCallback('kubi-drugs:server:getLocationByIndex', function(source, callback, token, drugType, locationType, locationIndex)
-    -- Weryfikacja tokenu bezpieczeństwa
-    if not VerifySecurityToken(source, token) then
-        callback(false)
+-- Event inicjujący proces przetwarzania narkotyków w standardowej lokalizacji
+RegisterSecuredEvent('kubi-drugs:server:startProcess', function(source, drugType, processType, locationIndex)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return end
+    
+    -- Sprawdź czy jest wystarczająca liczba policjantów
+    local currentCops = QBCore.Functions.GetDutyCount('police')
+    if currentCops < Config.MinCops then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.not_enough_police"), "error")
         return
     end
     
-    -- Resetujemy token po użyciu
-    ResetSecurityToken(source)
+    -- Pobierz dane o narkotyku
+    local drugData = Config.Drugs[drugType]
+    if not drugData then return end
     
-    -- Wysyłamy zaszyfrowaną lokalizację
-    SendEncryptedLocationToClient(source, drugType, locationType, locationIndex)
-    callback(true)
-end)
-
--- Zmodyfikowana funkcja weryfikacji strefy używająca nowego systemu
-function IsPlayerInZone(playerId, drugType, zoneType, locationIndex)
-    local player = QBCore.Functions.GetPlayer(playerId)
-    if not player then return false end
+    -- Sprawdź czy proces wymaga laboratorium
+    if processType ~= "harvest" and drugData.labRequired and processType ~= "package" then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.lab_required"), "error")
+        return
+    end
     
-    if not DrugLocations[drugType] or not DrugLocations[drugType][zoneType] then return false end
-    
-    -- Jeśli nie podano konkretnego indeksu, sprawdzamy wszystkie lokalizacje tego typu
-    if not locationIndex then
-        local playerCoords = GetEntityCoords(GetPlayerPed(playerId))
-        local inZone = false
+    -- Sprawdź czy gracz ma wymagane przedmioty
+    if processType ~= "harvest" then
+        if not drugData.requiredItems[processType] then
+            TriggerClientEvent('QBCore:Notify', src, Lang:t("error.process_failed"), "error")
+            return
+        end
         
-        for idx, location in ipairs(DrugLocations[drugType][zoneType]) do
-            local distance = #(playerCoords - location.coords)
-            if distance <= location.radius then
-                inZone = true
+        local canProcess = true
+        local removeItems = {}
+        
+        for _, itemData in ipairs(drugData.requiredItems[processType]) do
+            local item = Player.Functions.GetItemByName(itemData.name)
+            if not item or item.amount < itemData.amount then
+                canProcess = false
                 break
+            end
+            
+            if not itemData.return then
+                table.insert(removeItems, {
+                    name = itemData.name,
+                    amount = itemData.amount
+                })
             end
         end
         
-        if not inZone then
-            LogSecurityViolation(playerId, "Próba akcji " .. zoneType .. " dla " .. drugType .. " poza wyznaczoną strefą")
+        if not canProcess then
+            TriggerClientEvent('QBCore:Notify', src, Lang:t("error.no_required_items"), "error")
+            return
         end
         
-        return inZone
-    else
-        -- Sprawdzamy konkretną lokalizację po indeksie
-        local location = DrugLocations[drugType][zoneType][locationIndex]
-        if not location then return false end
-        
-        local playerCoords = GetEntityCoords(GetPlayerPed(playerId))
-        local distance = #(playerCoords - location.coords)
-        local inZone = distance <= location.radius
-        
-        if not inZone then
-            LogSecurityViolation(playerId, "Próba akcji " .. zoneType .. " dla " .. drugType .. " poza wyznaczoną strefą (indeks: " .. locationIndex .. ")")
+        -- Usuń wymagane przedmioty (te które nie są zwracane)
+        for _, item in ipairs(removeItems) do
+            Player.Functions.RemoveItem(item.name, item.amount)
+            TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[item.name], "remove", item.amount)
         end
-        
-        return inZone
-    end
-end
-
--- Event do zbierania narkotyków
-RegisterSecuredEvent('kubi-drugs:server:harvestDrug', function(source, drugType, locationIndex)
-    local Player = QBCore.Functions.GetPlayer(source)
-    if not Player then return end
-    
-    -- Sprawdzanie wymaganej ilości policjantów
-    if GetCopCount() < Config.MinCops then
-        TriggerClientEvent('QBCore:Notify', source, Lang:t("error.not_enough_police"), "error")
-        return
     end
     
-    -- Sprawdzanie czy gracz jest w odpowiedniej strefie
-    if not IsPlayerInZone(source, drugType, "harvest", locationIndex) then
-        return
+    -- Określenie czasu trwania procesu
+    local processTime = 0
+    if processType == "harvest" then
+        processTime = drugData.harvestTime
+    elseif processType == "process" or processType == "concentrate" or processType == "purify" or processType == "crystallize" or processType == "refine" or processType == "distill" or processType == "dry" or processType == "grind" or processType == "press" or processType == "color" or processType == "crack" or processType == "blue_meth" then
+        processTime = drugData.processTime
+    elseif processType == "package" or processType == "premium_package" or processType == "inject" or processType == "blotter" or processType == "capsule" then
+        processTime = drugData.packageTime
     end
     
-    -- Pobieranie informacji o nagrodzie
-    local drugData = Config.Drugs[drugType]
-    if not drugData then return end
-    
-    local rewardItem = drugData.rewardItems.harvest[1]
-    if not rewardItem then return end
-    
-    -- Losowanie ilości
-    local amount = math.random(rewardItem.amount.min, rewardItem.amount.max)
-    
-    -- Sprawdzanie miejsca w ekwipunku
-    if not Player.Functions.AddItem(rewardItem.name, amount) then
-        TriggerClientEvent('QBCore:Notify', source, Lang:t("error.no_space_inventory"), "error")
-        return
-    end
-    
-    -- Notyfikacja o sukcesie
-    TriggerClientEvent('inventory:client:ItemBox', source, QBCore.Shared.Items[rewardItem.name], "add")
-    TriggerClientEvent('QBCore:Notify', source, Lang:t("success.harvested", {
-        amount = amount,
-        item = QBCore.Shared.Items[rewardItem.name].label
-    }), "success")
+    -- Wyślij event do klienta aby rozpocząć proces
+    TriggerClientEvent('kubi-drugs:client:processing', src, drugType, processTime, processType, nil, nil)
 end)
 
--- Event do przetwarzania narkotyków
-RegisterSecuredEvent('kubi-drugs:server:processDrug', function(source, drugType, locationIndex)
-    local Player = QBCore.Functions.GetPlayer(source)
+-- Event inicjujący proces przetwarzania narkotyków w laboratorium
+RegisterSecuredEvent('kubi-drugs:server:startLabProcess', function(source, drugType, labName, processType, labLevel)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
     if not Player then return end
     
-    -- Sprawdzanie wymaganej ilości policjantów
-    if GetCopCount() < Config.MinCops then
-        TriggerClientEvent('QBCore:Notify', source, Lang:t("error.not_enough_police"), "error")
+    -- Sprawdź czy jest wystarczająca liczba policjantów
+    local currentCops = QBCore.Functions.GetDutyCount('police')
+    if currentCops < Config.MinCops then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.not_enough_police"), "error")
         return
     end
     
-    -- Sprawdzanie czy gracz jest w odpowiedniej strefie
-    if not IsPlayerInZone(source, drugType, "process", locationIndex) then
-        return
-    end
-    
-    -- Pobieranie informacji o procesie
+    -- Pobierz dane o narkotyku
     local drugData = Config.Drugs[drugType]
     if not drugData then return end
     
-    -- Sprawdzanie czy gracz ma wymagane przedmioty
-    local hasAllItems = true
-    for _, requiredItem in ipairs(drugData.requiredItems.process) do
-        if Player.Functions.GetItemByName(requiredItem.name).amount < requiredItem.amount then
-            hasAllItems = false
+    -- Sprawdź czy gracz ma dostęp do laboratorium
+    if not HasLabAccess(src, labName) then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.lab_access_denied"), "error")
+        return
+    end
+    
+    -- Znajdź laboratorium
+    local lab = nil
+    for _, v in ipairs(Config.Labs) do
+        if v.name == labName then
+            lab = v
             break
         end
     end
     
-    if not hasAllItems then
-        TriggerClientEvent('QBCore:Notify', source, Lang:t("error.no_required_items"), "error")
-        return
-    end
+    if not lab then return end
     
-    -- Usuwanie wymaganych przedmiotów
-    for _, requiredItem in ipairs(drugData.requiredItems.process) do
-        Player.Functions.RemoveItem(requiredItem.name, requiredItem.amount)
-        TriggerClientEvent('inventory:client:ItemBox', source, QBCore.Shared.Items[requiredItem.name], "remove")
-    end
-    
-    -- Dodawanie nagrody
-    local rewardItem = drugData.rewardItems.process[1]
-    Player.Functions.AddItem(rewardItem.name, rewardItem.amount)
-    TriggerClientEvent('inventory:client:ItemBox', source, QBCore.Shared.Items[rewardItem.name], "add")
-    
-    -- Notyfikacja o sukcesie
-    TriggerClientEvent('QBCore:Notify', source, Lang:t("success.processed", {
-        amount = rewardItem.amount,
-        item = QBCore.Shared.Items[rewardItem.name].label
-    }), "success")
-end)
-
--- Event do pakowania narkotyków
-RegisterSecuredEvent('kubi-drugs:server:packageDrug', function(source, drugType, locationIndex)
-    local Player = QBCore.Functions.GetPlayer(source)
-    if not Player then return end
-    
-    -- Sprawdzanie wymaganej ilości policjantów
-    if GetCopCount() < Config.MinCops then
-        TriggerClientEvent('QBCore:Notify', source, Lang:t("error.not_enough_police"), "error")
-        return
-    end
-    
-    -- Sprawdzanie czy gracz jest w odpowiedniej strefie
-    if not IsPlayerInZone(source, drugType, "package", locationIndex) then
-        return
-    end
-    
-    -- Pobieranie informacji o procesie
-    local drugData = Config.Drugs[drugType]
-    if not drugData then return end
-    
-    -- Sprawdzanie czy gracz ma wymagane przedmioty
-    local hasAllItems = true
-    for _, requiredItem in ipairs(drugData.requiredItems.package) do
-        if Player.Functions.GetItemByName(requiredItem.name).amount < requiredItem.amount then
-            hasAllItems = false
+    -- Sprawdź czy narkotyk może być produkowany w tym laboratorium
+    local canProduceDrug = false
+    for _, labDrug in ipairs(lab.drugs) do
+        if labDrug == drugType then
+            canProduceDrug = true
             break
         end
     end
     
-    if not hasAllItems then
-        TriggerClientEvent('QBCore:Notify', source, Lang:t("error.no_required_items"), "error")
+    if not canProduceDrug then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.lab_unavailable"), "error")
         return
     end
     
-    -- Usuwanie wymaganych przedmiotów
-    for _, requiredItem in ipairs(drugData.requiredItems.package) do
-        Player.Functions.RemoveItem(requiredItem.name, requiredItem.amount)
-        TriggerClientEvent('inventory:client:ItemBox', source, QBCore.Shared.Items[requiredItem.name], "remove")
+    -- Sprawdź czy gracz ma wymagany sprzęt laboratoryjny
+    if not HasRequiredLabEquipment(src, lab.equipmentRequired) then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.missing_equipment"), "error")
+        return
     end
     
-    -- Dodawanie nagrody
-    local rewardItem = drugData.rewardItems.package[1]
-    Player.Functions.AddItem(rewardItem.name, rewardItem.amount)
-    TriggerClientEvent('inventory:client:ItemBox', source, QBCore.Shared.Items[rewardItem.name], "add")
+    -- Sprawdź czy gracz ma wymagane przedmioty
+    if not drugData.requiredItems[processType] then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.process_failed"), "error")
+        return
+    end
     
-    -- Notyfikacja o sukcesie
-    TriggerClientEvent('QBCore:Notify', source, Lang:t("success.packaged", {
-        amount = rewardItem.amount,
-        item = QBCore.Shared.Items[rewardItem.name].label
-    }), "success")
+    local canProcess = true
+    local removeItems = {}
+    
+    for _, itemData in ipairs(drugData.requiredItems[processType]) do
+        local item = Player.Functions.GetItemByName(itemData.name)
+        if not item or item.amount < itemData.amount then
+            canProcess = false
+            break
+        end
+        
+        if not itemData.return then
+            table.insert(removeItems, {
+                name = itemData.name,
+                amount = itemData.amount
+            })
+        end
+    end
+    
+    if not canProcess then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.no_required_items"), "error")
+        return
+    end
+    
+    -- Usuń wymagane przedmioty (te które nie są zwracane)
+    for _, item in ipairs(removeItems) do
+        Player.Functions.RemoveItem(item.name, item.amount)
+        TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[item.name], "remove", item.amount)
+    end
+    
+    -- Określenie czasu trwania procesu
+    local processTime = 0
+    if processType == "process" or processType == "concentrate" or processType == "purify" or processType == "crystallize" or processType == "refine" or processType == "distill" or processType == "dry" or processType == "grind" or processType == "press" or processType == "color" or processType == "crack" or processType == "blue_meth" then
+        processTime = drugData.processTime
+    elseif processType == "package" or processType == "premium_package" or processType == "inject" or processType == "blotter" or processType == "capsule" then
+        processTime = drugData.packageTime
+    end
+    
+    -- Skrócenie czasu procesu w laboratorium (20% szybciej)
+    processTime = math.floor(processTime * 0.8)
+    
+    -- Wyślij event do klienta aby rozpocząć proces
+    TriggerClientEvent('kubi-drugs:client:processing', src, drugType, processTime, processType, labName, labLevel)
 end)
 
--- Event do sprzedaży narkotyków
-RegisterSecuredEvent('kubi-drugs:server:sellDrugs', function(source, drugType, dealerId)
-    local Player = QBCore.Functions.GetPlayer(source)
+-- Event kończący proces przetwarzania
+RegisterSecuredEvent('kubi-drugs:server:finishProcess', function(source, drugType, processType, labName, labLevel)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
     if not Player then return end
     
-    -- Sprawdzanie wymaganej ilości policjantów
-    if GetCopCount() < Config.MinCops then
-        TriggerClientEvent('QBCore:Notify', source, Lang:t("error.not_enough_police"), "error")
+    -- Pobierz dane o narkotyku
+    local drugData = Config.Drugs[drugType]
+    if not drugData then return end
+    
+    -- Sprawdź czy proces zakończył się sukcesem
+    local success = CheckProcessSuccess(src, drugType, labLevel)
+    
+    -- Jeśli proces się nie powiódł
+    if not success then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.process_failed"), "error")
+        
+        -- Sprawdź czy nastąpi eksplozja/pożar
+        if processType ~= "harvest" and processType ~= "package" and CheckExplosion(src, drugType) then
+            TriggerClientEvent('kubi-drugs:client:labExplosion', src)
+        end
+        
         return
     end
     
-    -- Pobieranie informacji o dealerze
+    -- Generowanie jakości narkotyku (tylko dla procesów w laboratorium)
+    local drugQuality = nil
+    if labName and labLevel and drugData.quality then
+        drugQuality = GenerateDrugQuality(src, drugType, labLevel)
+    end
+    
+    -- Przyznawanie nagród
+    if drugData.rewardItems[processType] then
+        for _, rewardItem in ipairs(drugData.rewardItems[processType]) do
+            local amount = rewardItem.amount
+            
+            -- Jeśli ilość jest zakresem, losuj wartość
+            if type(amount) == "table" and amount.min and amount.max then
+                amount = math.random(amount.min, amount.max)
+            end
+            
+            -- Dodaj przedmiot
+            if Player.Functions.AddItem(rewardItem.name, amount) then
+                TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[rewardItem.name], "add", amount)
+                
+                -- Wyświetl odpowiednią wiadomość
+                if processType == "harvest" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.harvested", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "process" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.processed", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "package" or processType == "premium_package" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.packaged", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "concentrate" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.concentrate_created", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "purify" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.purified", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "crystallize" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.crystallized", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "refine" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.refined", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "distill" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.distilled", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "dry" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.dried", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "grind" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.ground", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "capsule" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.capsules_filled", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "blotter" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.blotter_infused", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "press" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.pill_pressed", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "color" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.colored", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                end
+            else
+                TriggerClientEvent('QBCore:Notify', src, Lang:t("error.no_space_inventory"), "error")
+            end
+        end
+    end
+    
+    -- Jeśli proces odbywał się w laboratorium i jakość była generowana, poinformuj gracza
+    if drugQuality then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("success.quality_improved", {quality = drugQuality.label}), "success")
+    end
+end)
+
+-- Event sprzedaży narkotyków
+RegisterSecuredEvent('kubi-drugs:server:sellDrug', function(source, drugType, dealerId, quality)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return end
+    
+    -- Sprawdź czy jest wystarczająca liczba policjantów
+    local currentCops = QBCore.Functions.GetDutyCount('police')
+    if currentCops < Config.MinCops then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.not_enough_police"), "error")
+        return
+    end
+    
+    -- Pobierz dane o narkotyku
+    local drugData = Config.Drugs[drugType]
+    if not drugData then return end
+    
+    -- Pobierz dane o dealerze
     local dealer = Config.Dealers[dealerId]
     if not dealer then return end
     
-    -- Sprawdzanie czy dealer obsługuje ten rodzaj narkotyku
-    local supportsThisDrug = false
-    for _, drug in ipairs(dealer.drugs) do
-        if drug == drugType then
-            supportsThisDrug = true
+    -- Sprawdź czy dealer obsługuje ten typ narkotyku
+    local canSellDrug = false
+    for _, dealerDrug in ipairs(dealer.drugs) do
+        if dealerDrug == drugType then
+            canSellDrug = true
             break
         end
     end
     
-    if not supportsThisDrug then
-        TriggerClientEvent('QBCore:Notify', source, Lang:t("error.dealer_unavailable"), "error")
+    if not canSellDrug then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.dealer_unavailable"), "error")
         return
     end
     
-    -- Sprawdzanie godzin pracy dealera
-    local currentHour = tonumber(os.date("%H"))
-    if currentHour < dealer.hours.from or currentHour >= dealer.hours.to then
-        TriggerClientEvent('QBCore:Notify', source, Lang:t("error.dealer_unavailable"), "error")
+    -- Sprawdź czy dealer sprawdza jakość (jeśli sprzedajemy premium)
+    if quality == "premium" and not dealer.qualityCheck then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.quality_too_low"), "error")
         return
     end
     
-    -- Sprawdzanie czy gracz ma narkotyko do sprzedania
-    local drugData = Config.Drugs[drugType]
-    if not drugData then return end
+    -- Określ nazwę przedmiotu do sprzedaży
+    local itemName = ""
+    if quality == "premium" then
+        if drugType == "weed" then
+            itemName = "weed_premium"
+        elseif drugType == "cocaine" then
+            itemName = "cocaine_premium"
+        elseif drugType == "meth" then
+            itemName = "meth_premium"
+        elseif drugType == "heroin" then
+            itemName = "heroin_premium"
+        elseif drugType == "ecstasy" then
+            itemName = "ecstasy_premium"
+        else
+            itemName = drugType .. "_packaged" -- Domyślnie
+        end
+    else
+        itemName = drugType .. "_packaged"
+    end
     
-    local packagedItemName = drugData.rewardItems.package[1].name
-    local item = Player.Functions.GetItemByName(packagedItemName)
-    
-    if not item or item.amount <= 0 then
-        TriggerClientEvent('QBCore:Notify', source, Lang:t("error.no_drugs_to_sell"), "error")
+    -- Sprawdź czy gracz ma narkotyk w ekwipunku
+    local drugItem = Player.Functions.GetItemByName(itemName)
+    if not drugItem then
+        TriggerClientEvent('QBCore:Notify', src, Lang:t("error.no_drugs_to_sell"), "error")
         return
     end
     
-    -- Losowanie ceny w zakresie
-    local price = math.random(drugData.sellPrice.min, drugData.sellPrice.max)
+    -- Określ ilość narkotyku do sprzedaży (maksymalnie 5 na raz)
+    local amount = math.min(drugItem.amount, 5)
     
-    -- Usuwanie narkotyku z ekwipunku
-    Player.Functions.RemoveItem(packagedItemName, 1)
-    TriggerClientEvent('inventory:client:ItemBox', source, QBCore.Shared.Items[packagedItemName], "remove")
+    -- Oblicz cenę
+    local basePrice = math.random(drugData.sellPrice.min, drugData.sellPrice.max)
+    local finalPrice = basePrice
     
-    -- Dodawanie pieniędzy
-    Player.Functions.AddMoney("cash", price)
+    -- Zastosuj modyfikatory ceny
+    if quality == "premium" then
+        finalPrice = finalPrice * 2 -- Podwójna cena za premium
+    end
     
-    -- Notyfikacja o sukcesie
-    TriggerClientEvent('QBCore:Notify', source, Lang:t("success.sold_drugs", {
-        amount = 1,
-        item = QBCore.Shared.Items[packagedItemName].label,
-        money = price
-    }), "success")
+    -- Zastosuj bonus dealera
+    if dealer.priceBoost and dealer.priceBoost > 0 then
+        finalPrice = finalPrice * (1 + (dealer.priceBoost / 100))
+    end
+    
+    -- Zaokrąglij cenę
+    finalPrice = math.floor(finalPrice)
+    
+    -- Całkowita cena za wszystkie narkotyki
+    local totalPrice = finalPrice * amount
+    
+    -- Usuń narkotyk z ekwipunku
+    Player.Functions.RemoveItem(itemName, amount)
+    TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[itemName], "remove", amount)
+    
+    -- Dodaj pieniądze
+    Player.Functions.AddMoney("cash", totalPrice)
+    
+    -- Powiadom gracza
+    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.sold_drugs", {amount = amount, item = QBCore.Shared.Items[itemName].label, money = totalPrice}), "success")
     
     -- Szansa na wezwanie policji
     if math.random(1, 100) <= Config.PoliceCallChance then
-        local playerCoords = GetEntityCoords(GetPlayerPed(source))
-        -- Alert dla policji
-        for _, v in pairs(QBCore.Functions.GetPlayers()) do
-            local Player = QBCore.Functions.GetPlayer(v)
-            if Player.PlayerData.job.name == "police" and Player.PlayerData.job.onduty then
-                TriggerClientEvent('kubi-drugs:client:policeAlert', v, playerCoords, Lang:t("info.drug_deal"))
+        -- Logika wezwania policji (do zaimplementowania)
+        local ped = GetPlayerPed(src)
+        local coords = GetEntityCoords(ped)
+        
+        -- Powiadom policję
+        local players = QBCore.Functions.GetQBPlayers()
+        for _, v in pairs(players) do
+            if v.PlayerData.job.name == 'police' and v.PlayerData.job.onduty then
+                TriggerClientEvent('police:client:DrugSaleAlert', v.PlayerData.source, coords)
             end
         end
     end
+end)
+
+-- Event kupna materiałów/sprzętu
+RegisterSecuredEvent('kubi-drugs:server:buyMaterial', function(source, item, price, dealerId)
+    local src = source
+    local Player = QBCore.Functions.GetPlayer(src)
+    if not Player then return end
+    
+    -- Sprawdź czy gracz ma wystarczająco pieniędzy
+    if Player.PlayerData.money.cash < price then
+        TriggerClientEvent('QBCore:Notify', src, "Nie masz wystarczająco pieniędzy", "error")
+        return
+    end
+    
+    -- Sprawdź czy przedmiot istnieje w konfiguracji
+    local itemExists = false
+    if Config.Chemicals[item] or Config.LabEquipment[item] or Config.PackagingMaterials[item] then
+        itemExists = true
+    end
+    
+    if not itemExists then
+        TriggerClientEvent('QBCore:Notify', src, "Przedmiot nie istnieje", "error")
+        return
+    end
+    
+    -- Pobierz opłatę
+    Player.Functions.RemoveMoney('cash', price)
+    
+    -- Dodaj przedmiot (różna ilość w zależności od przedmiotu)
+    local amount = 1
+    if item == "plastic_bag" or item == "pill_casing" or item == "blotter_paper" then
+        amount = 10 -- Więcej dla małych materiałów
+    elseif item == "basic_chemicals" or item == "solvent" or item == "acid" then
+        amount = 3 -- Więcej dla podstawowych chemikaliów
+    end
+    
+    -- Dodaj przedmiot
+    Player.Functions.AddItem(item, amount)
+    TriggerClientEvent('inventory:client:ItemBox', src, QBCore.Shared.Items[item], "add", amount)
+    
+    -- Powiadom gracza
+    TriggerClientEvent('QBCore:Notify', src, "Kupiłeś " .. amount .. "x " .. QBCore.Shared.Items[item].label, "success")
 end)
 
 -- Rejestracja przedmiotów przy starcie skryptu

@@ -4,26 +4,11 @@ local QBCore = exports['qb-core']:GetCoreObject()
 local isHarvesting = false
 local isProcessing = false
 local isPackaging = false
+local processingDrug = nil
+local processingType = nil
+local processingLabName = nil
+local processingLabLevel = nil
 local securityToken = nil
-
--- Tabela na zaszyfrowane lokalizacje otrzymane z serwera
-local EncryptedLocations = {}
-local PlayerSalt = nil
-local LocationBlips = {}
-
--- Funkcja do pobierania i deszyfrowania lokalizacji
-local function DecryptCoords(coords, salt)
-    if not coords or not salt then return vector3(0, 0, 0) end
-    
-    local decryptedCoords = {}
-    local saltValue = string.byte(salt, 1, 1) or 10
-    
-    decryptedCoords.x = coords.x - saltValue
-    decryptedCoords.y = coords.y + saltValue
-    decryptedCoords.z = coords.z / (saltValue * 0.01)
-    
-    return vector3(decryptedCoords.x, decryptedCoords.y, decryptedCoords.z)
-end
 
 -- Funkcja pobierająca token bezpieczeństwa z serwera
 local function GetSecurityToken(cb)
@@ -43,243 +28,119 @@ local function ResetSecurityToken()
     securityToken = nil
 end
 
--- Funkcja pobierająca strukturę lokalizacji dla danego narkotyku (bez koordynatów)
-local function RequestDrugLocationsStructure(drugType, cb)
-    QBCore.Functions.TriggerCallback('kubi-drugs:server:requestLocations', function(locations, salt)
-        if not locations then
-            cb(false)
-            return
-        end
-        
-        -- Zapisujemy salt do późniejszego odszyfrowania
-        PlayerSalt = salt
-        
-        -- Zapisujemy strukturę (nie ma tu koordynatów, tylko informację o ilości lokalizacji)
-        EncryptedLocations[drugType] = locations
-        
-        cb(true)
-    end, drugType)
-end
-
--- Funkcja pobierająca konkretne koordynaty lokalizacji z serwera
-local function RequestSpecificLocation(drugType, locationType, locationIndex, cb)
-    -- Pobierz token bezpieczeństwa
-    GetSecurityToken(function(token)
-        QBCore.Functions.TriggerCallback('kubi-drugs:server:getLocationByIndex', function(success)
-            if not success then
-                cb(false)
-                return
-            end
-            cb(true)
-        end, token, drugType, locationType, locationIndex)
-    end)
-end
-
--- Event do odbierania zaszyfrowanej lokalizacji z serwera
-RegisterNetEvent('kubi-drugs:client:receiveLocation', function(data)
-    if not EncryptedLocations[data.drugType] then
-        EncryptedLocations[data.drugType] = {}
-    end
-    
-    if not EncryptedLocations[data.drugType][data.locationType] then
-        EncryptedLocations[data.drugType][data.locationType] = {}
-    end
-    
-    -- Zapisujemy zaszyfrowane koordynaty
-    EncryptedLocations[data.drugType][data.locationType][data.locationIndex] = {
-        coords = data.coords,
-        radius = data.radius,
-        salt = data.salt
-    }
-end)
-
--- Funkcja sprawdzająca czy gracz jest w odpowiedniej strefie, weryfikuje po stronie serwera
-local function IsPlayerInLocation(drugType, locationType, locationIndex, cb)
-    -- Jeśli brakuje danych do sprawdzenia lokalizacji, najpierw je pobierz
-    if not EncryptedLocations[drugType] or not EncryptedLocations[drugType][locationType] or not EncryptedLocations[drugType][locationType][locationIndex] then
-        -- Najpierw pobierz strukturę lokalizacji jeśli jej nie ma
-        if not EncryptedLocations[drugType] then
-            RequestDrugLocationsStructure(drugType, function(success)
-                if not success then
-                    cb(false)
-                    return
-                end
-                
-                -- Następnie pobierz konkretną lokalizację
-                RequestSpecificLocation(drugType, locationType, locationIndex, function(success)
-                    if not success then
-                        cb(false)
-                        return
-                    end
-                    
-                    -- Sprawdź czy gracz jest w strefie
-                    CheckPlayerZone(drugType, locationType, locationIndex, cb)
-                end)
-            end)
-        else
-            -- Jeśli struktura istnieje, pobierz tylko konkretną lokalizację
-            RequestSpecificLocation(drugType, locationType, locationIndex, function(success)
-                if not success then
-                    cb(false)
-                    return
-                end
-                
-                -- Sprawdź czy gracz jest w strefie
-                CheckPlayerZone(drugType, locationType, locationIndex, cb)
-            end)
-        end
-    else
-        -- Jeśli mamy już dane, sprawdź czy gracz jest w strefie
-        CheckPlayerZone(drugType, locationType, locationIndex, cb)
-    end
-end
-
--- Funkcja sprawdzająca czy gracz jest w strefie (wysyła zapytanie do serwera)
-function CheckPlayerZone(drugType, locationType, locationIndex, cb)
-    local coords = GetEntityCoords(PlayerPedId())
-    
-    QBCore.Functions.TriggerCallback('kubi-drugs:server:checkPlayerInZone', function(isInZone)
-        cb(isInZone)
-    end, drugType, locationType, locationIndex, coords)
-end
-
 -- Funkcja rozpoczynająca zbieranie narkotyków
-local function StartHarvesting(drugType, locationIndex)
+local function StartHarvesting(drugType, coords)
     -- Sprawdź czy gracz już nie zbiera
     if isHarvesting then
         QBCore.Functions.Notify(Lang:t("error.already_harvesting"), "error")
         return
     end
     
-    -- Sprawdź czy gracz jest w odpowiedniej strefie
-    IsPlayerInLocation(drugType, "harvest", locationIndex, function(isInZone)
-        if not isInZone then
-            QBCore.Functions.Notify(Lang:t("error.not_in_zone"), "error")
-            return
-        end
+    -- Pobierz token bezpieczeństwa
+    GetSecurityToken(function(token)
+        isHarvesting = true
         
-        -- Pobierz token bezpieczeństwa
-        GetSecurityToken(function(token)
-            isHarvesting = true
+        -- Rozpocznij animację
+        TaskStartScenarioInPlace(PlayerPedId(), "WORLD_HUMAN_GARDENER_PLANT", 0, true)
+        
+        -- Rozpocznij pasek postępu
+        local drugData = Config.Drugs[drugType]
+        QBCore.Functions.Progressbar("harvest_drugs", Lang:t("info.harvesting"), drugData.harvestTime * 1000, false, true, {
+            disableMovement = true,
+            disableCarMovement = true,
+            disableMouse = false,
+            disableCombat = true,
+        }, {}, {}, {}, function() -- Ukończono
+            ClearPedTasks(PlayerPedId())
+            isHarvesting = false
             
-            -- Rozpocznij animację
-            TaskStartScenarioInPlace(PlayerPedId(), "WORLD_HUMAN_GARDENER_PLANT", 0, true)
+            -- Wyślij event do serwera z tokenem bezpieczeństwa
+            TriggerServerEvent('kubi-drugs:server:harvestDrug', token, drugType)
             
-            -- Rozpocznij pasek postępu
-            local drugData = Config.Drugs[drugType]
-            QBCore.Functions.Progressbar("harvest_drugs", Lang:t("info.harvesting"), drugData.harvestTime * 1000, false, true, {
-                disableMovement = true,
-                disableCarMovement = true,
-                disableMouse = false,
-                disableCombat = true,
-            }, {}, {}, {}, function() -- Ukończono
-                ClearPedTasks(PlayerPedId())
-                isHarvesting = false
-                
-                -- Wyślij event do serwera z tokenem bezpieczeństwa i indeksem lokalizacji
-                TriggerServerEvent('kubi-drugs:server:harvestDrug', token, drugType, locationIndex)
-                
-                -- Resetuj token po użyciu
-                ResetSecurityToken()
-            end, function() -- Anulowano
-                ClearPedTasks(PlayerPedId())
-                isHarvesting = false
-                QBCore.Functions.Notify(Lang:t("error.process_canceled"), "error")
-            end)
+            -- Resetuj token po użyciu
+            ResetSecurityToken()
+        end, function() -- Anulowano
+            ClearPedTasks(PlayerPedId())
+            isHarvesting = false
+            QBCore.Functions.Notify(Lang:t("error.process_canceled"), "error")
         end)
     end)
 end
 
 -- Funkcja rozpoczynająca przetwarzanie narkotyków
-local function StartProcessing(drugType, locationIndex)
+local function StartProcessing(drugType, coords)
     -- Sprawdź czy gracz już nie przetwarza
     if isProcessing then
         QBCore.Functions.Notify(Lang:t("error.already_processing"), "error")
         return
     end
     
-    -- Sprawdź czy gracz jest w odpowiedniej strefie
-    IsPlayerInLocation(drugType, "process", locationIndex, function(isInZone)
-        if not isInZone then
-            QBCore.Functions.Notify(Lang:t("error.not_in_zone"), "error")
-            return
-        end
+    -- Pobierz token bezpieczeństwa
+    GetSecurityToken(function(token)
+        isProcessing = true
         
-        -- Pobierz token bezpieczeństwa
-        GetSecurityToken(function(token)
-            isProcessing = true
+        -- Rozpocznij animację
+        TaskStartScenarioInPlace(PlayerPedId(), "PROP_HUMAN_BUM_BIN", 0, true)
+        
+        -- Rozpocznij pasek postępu
+        local drugData = Config.Drugs[drugType]
+        QBCore.Functions.Progressbar("process_drugs", Lang:t("info.processing"), drugData.processTime * 1000, false, true, {
+            disableMovement = true,
+            disableCarMovement = true,
+            disableMouse = false,
+            disableCombat = true,
+        }, {}, {}, {}, function() -- Ukończono
+            ClearPedTasks(PlayerPedId())
+            isProcessing = false
             
-            -- Rozpocznij animację
-            TaskStartScenarioInPlace(PlayerPedId(), "PROP_HUMAN_BUM_BIN", 0, true)
+            -- Wyślij event do serwera z tokenem bezpieczeństwa
+            TriggerServerEvent('kubi-drugs:server:processDrug', token, drugType)
             
-            -- Rozpocznij pasek postępu
-            local drugData = Config.Drugs[drugType]
-            QBCore.Functions.Progressbar("process_drugs", Lang:t("info.processing"), drugData.processTime * 1000, false, true, {
-                disableMovement = true,
-                disableCarMovement = true,
-                disableMouse = false,
-                disableCombat = true,
-            }, {}, {}, {}, function() -- Ukończono
-                ClearPedTasks(PlayerPedId())
-                isProcessing = false
-                
-                -- Wyślij event do serwera z tokenem bezpieczeństwa i indeksem lokalizacji
-                TriggerServerEvent('kubi-drugs:server:processDrug', token, drugType, locationIndex)
-                
-                -- Resetuj token po użyciu
-                ResetSecurityToken()
-            end, function() -- Anulowano
-                ClearPedTasks(PlayerPedId())
-                isProcessing = false
-                QBCore.Functions.Notify(Lang:t("error.process_canceled"), "error")
-            end)
+            -- Resetuj token po użyciu
+            ResetSecurityToken()
+        end, function() -- Anulowano
+            ClearPedTasks(PlayerPedId())
+            isProcessing = false
+            QBCore.Functions.Notify(Lang:t("error.process_canceled"), "error")
         end)
     end)
 end
 
 -- Funkcja rozpoczynająca pakowanie narkotyków
-local function StartPackaging(drugType, locationIndex)
+local function StartPackaging(drugType, coords)
     -- Sprawdź czy gracz już nie pakuje
     if isPackaging then
         QBCore.Functions.Notify(Lang:t("error.already_packaging"), "error")
         return
     end
     
-    -- Sprawdź czy gracz jest w odpowiedniej strefie
-    IsPlayerInLocation(drugType, "package", locationIndex, function(isInZone)
-        if not isInZone then
-            QBCore.Functions.Notify(Lang:t("error.not_in_zone"), "error")
-            return
-        end
+    -- Pobierz token bezpieczeństwa
+    GetSecurityToken(function(token)
+        isPackaging = true
         
-        -- Pobierz token bezpieczeństwa
-        GetSecurityToken(function(token)
-            isPackaging = true
+        -- Rozpocznij animację
+        TaskStartScenarioInPlace(PlayerPedId(), "PROP_HUMAN_PARKING_METER", 0, true)
+        
+        -- Rozpocznij pasek postępu
+        local drugData = Config.Drugs[drugType]
+        QBCore.Functions.Progressbar("package_drugs", Lang:t("info.packaging"), drugData.packageTime * 1000, false, true, {
+            disableMovement = true,
+            disableCarMovement = true,
+            disableMouse = false,
+            disableCombat = true,
+        }, {}, {}, {}, function() -- Ukończono
+            ClearPedTasks(PlayerPedId())
+            isPackaging = false
             
-            -- Rozpocznij animację
-            TaskStartScenarioInPlace(PlayerPedId(), "PROP_HUMAN_PARKING_METER", 0, true)
+            -- Wyślij event do serwera z tokenem bezpieczeństwa
+            TriggerServerEvent('kubi-drugs:server:packageDrug', token, drugType)
             
-            -- Rozpocznij pasek postępu
-            local drugData = Config.Drugs[drugType]
-            QBCore.Functions.Progressbar("package_drugs", Lang:t("info.packaging"), drugData.packageTime * 1000, false, true, {
-                disableMovement = true,
-                disableCarMovement = true,
-                disableMouse = false,
-                disableCombat = true,
-            }, {}, {}, {}, function() -- Ukończono
-                ClearPedTasks(PlayerPedId())
-                isPackaging = false
-                
-                -- Wyślij event do serwera z tokenem bezpieczeństwa i indeksem lokalizacji
-                TriggerServerEvent('kubi-drugs:server:packageDrug', token, drugType, locationIndex)
-                
-                -- Resetuj token po użyciu
-                ResetSecurityToken()
-            end, function() -- Anulowano
-                ClearPedTasks(PlayerPedId())
-                isPackaging = false
-                QBCore.Functions.Notify(Lang:t("error.process_canceled"), "error")
-            end)
+            -- Resetuj token po użyciu
+            ResetSecurityToken()
+        end, function() -- Anulowano
+            ClearPedTasks(PlayerPedId())
+            isPackaging = false
+            QBCore.Functions.Notify(Lang:t("error.process_canceled"), "error")
         end)
     end)
 end
@@ -312,126 +173,123 @@ local function SellDrugs(drugType, dealerId)
     end)
 end
 
--- Funkcja tworząca blipa dla lokalizacji po jej odszyfrowaniu
-local function CreateLocationBlip(drugType, locationType, locationIndex)
-    -- Pobieramy lokalizację
-    local locationData = EncryptedLocations[drugType][locationType][locationIndex]
-    if not locationData or not locationData.coords or not locationData.salt then return end
-    
-    -- Odszyfrowanie koordynatów
-    local coords = DecryptCoords(locationData.coords, locationData.salt)
-    
-    -- Utworzenie blipa
-    local blipId = drugType .. "_" .. locationType .. "_" .. locationIndex
-    
-    -- Sprawdzamy czy blip już istnieje
-    if LocationBlips[blipId] then
-        RemoveBlip(LocationBlips[blipId])
-    end
-    
-    local blip = AddBlipForCoord(coords.x, coords.y, coords.z)
-    
-    -- Ustawienie wyglądu blipa zależnie od typu lokalizacji
-    SetBlipSprite(blip, 51)
-    if locationType == "harvest" then
-        SetBlipColour(blip, 2) -- Zielony
-    elseif locationType == "process" then
-        SetBlipColour(blip, 3) -- Niebieski
-    elseif locationType == "package" then
-        SetBlipColour(blip, 1) -- Czerwony
-    end
-    
-    SetBlipScale(blip, 0.6)
-    SetBlipAsShortRange(blip, true)
-    BeginTextCommandSetBlipName("STRING")
-    
-    local blipName = ""
-    if locationType == "harvest" then
-        blipName = Lang:t("info.harvest_blip")
-    elseif locationType == "process" then
-        blipName = Lang:t("info.process_blip")
-    elseif locationType == "package" then
-        blipName = Lang:t("info.package_blip")
-    end
-    
-    AddTextComponentString(blipName .. " - " .. Config.Drugs[drugType].label)
-    EndTextCommandSetBlipName(blip)
-    
-    -- Zapisujemy utworzony blip
-    LocationBlips[blipId] = blip
-    
-    -- Dodaj target (opcjonalnie, jeśli włączony w konfiguracji)
-    if Config.UseTarget then
-        exports['qb-target']:AddCircleZone(blipId,
-            coords,
-            1.5,
-            {
-                name = blipId,
-                debugPoly = Config.Debug,
-            },
-            {
-                options = {
-                    {
-                        type = "client",
-                        icon = "fas fa-hand",
-                        label = GetTargetLabel(drugType, locationType),
-                        action = function()
-                            if locationType == "harvest" then
-                                StartHarvesting(drugType, locationIndex)
-                            elseif locationType == "process" then
-                                StartProcessing(drugType, locationIndex)
-                            elseif locationType == "package" then
-                                StartPackaging(drugType, locationIndex)
-                            end
-                        end
-                    },
-                },
-                distance = 2.0
-            }
-        )
-    end
-end
-
--- Funkcja zwracająca etykietę dla targetu
-function GetTargetLabel(drugType, locationType)
-    local targetLabel = ""
-    if locationType == "harvest" then
-        targetLabel = Lang:t("target.harvest")
-    elseif locationType == "process" then
-        targetLabel = Lang:t("target.process")
-    elseif locationType == "package" then
-        targetLabel = Lang:t("target.package")
-    end
-    
-    return targetLabel .. " " .. Config.Drugs[drugType].label
-end
-
--- Inicjalizacja systemu lokalizacji dla danego narkotyku
-local function InitializeDrugLocations(drugType)
-    -- Pobierz strukturę lokalizacji dla narkotyku
-    RequestDrugLocationsStructure(drugType, function(success)
-        if not success then return end
-        
-        -- Dla każdego typu lokalizacji i każdej lokalizacji w tym typie
-        for locationType, locations in pairs(EncryptedLocations[drugType]) do
-            for locationIndex, _ in ipairs(locations) do
-                -- Pobierz konkretną lokalizację
-                RequestSpecificLocation(drugType, locationType, locationIndex, function(success)
-                    if success then
-                        -- Utwórz blipa i target
-                        CreateLocationBlip(drugType, locationType, locationIndex)
-                    end
-                end)
-            end
-        end
-    end)
-end
-
 -- Ustawienie punktów zbierania na mapie
 local function SetupDrugLocations()
     -- Iteruj przez wszystkie narkotyki w konfiguracji
-    for drugType, _ in pairs(Config.Drugs) do
-        InitializeDrugLocations(drugType)
+    for drugType, locations in pairs(Config.Locations) do
+        -- Dodawanie blipów i targetów dla zbierania
+        for _, harvestSpot in ipairs(locations.harvest or {}) do
+            -- Dodaj blip na mapie
+            local blip = AddBlipForCoord(harvestSpot.coords.x, harvestSpot.coords.y, harvestSpot.coords.z)
+            SetBlipSprite(blip, 51)
+            SetBlipColour(blip, 2)
+            SetBlipScale(blip, 0.6)
+            SetBlipAsShortRange(blip, true)
+            BeginTextCommandSetBlipName("STRING")
+            AddTextComponentString(Lang:t("info.harvest_blip") .. " - " .. Config.Drugs[drugType].label)
+            EndTextCommandSetBlipName(blip)
+            
+            -- Dodaj target (opcjonalnie, jeśli włączony w konfiguracji)
+            if Config.UseTarget then
+                exports['qb-target']:AddCircleZone("harvest_" .. drugType .. "_" .. _,
+                    harvestSpot.coords,
+                    1.5,
+                    {
+                        name = "harvest_" .. drugType .. "_" .. _,
+                        debugPoly = Config.Debug,
+                    },
+                    {
+                        options = {
+                            {
+                                type = "client",
+                                icon = "fas fa-hand",
+                                label = Lang:t("target.harvest") .. " " .. Config.Drugs[drugType].label,
+                                action = function()
+                                    StartHarvesting(drugType, harvestSpot.coords)
+                                end
+                            },
+                        },
+                        distance = 2.0
+                    }
+                )
+            end
+        end
+        
+        -- Dodawanie blipów i targetów dla przetwarzania
+        for _, processSpot in ipairs(locations.process or {}) do
+            -- Dodaj blip na mapie
+            local blip = AddBlipForCoord(processSpot.coords.x, processSpot.coords.y, processSpot.coords.z)
+            SetBlipSprite(blip, 51)
+            SetBlipColour(blip, 3)
+            SetBlipScale(blip, 0.6)
+            SetBlipAsShortRange(blip, true)
+            BeginTextCommandSetBlipName("STRING")
+            AddTextComponentString(Lang:t("info.process_blip") .. " - " .. Config.Drugs[drugType].label)
+            EndTextCommandSetBlipName(blip)
+            
+            -- Dodaj target (opcjonalnie, jeśli włączony w konfiguracji)
+            if Config.UseTarget then
+                exports['qb-target']:AddCircleZone("process_" .. drugType .. "_" .. _,
+                    processSpot.coords,
+                    1.5,
+                    {
+                        name = "process_" .. drugType .. "_" .. _,
+                        debugPoly = Config.Debug,
+                    },
+                    {
+                        options = {
+                            {
+                                type = "client",
+                                icon = "fas fa-hand",
+                                label = Lang:t("target.process") .. " " .. Config.Drugs[drugType].label,
+                                action = function()
+                                    StartProcessing(drugType, processSpot.coords)
+                                end
+                            },
+                        },
+                        distance = 2.0
+                    }
+                )
+            end
+        end
+        
+        -- Dodawanie blipów i targetów dla pakowania
+        for _, packageSpot in ipairs(locations.package or {}) do
+            -- Dodaj blip na mapie
+            local blip = AddBlipForCoord(packageSpot.coords.x, packageSpot.coords.y, packageSpot.coords.z)
+            SetBlipSprite(blip, 51)
+            SetBlipColour(blip, 4)
+            SetBlipScale(blip, 0.6)
+            SetBlipAsShortRange(blip, true)
+            BeginTextCommandSetBlipName("STRING")
+            AddTextComponentString(Lang:t("info.package_blip") .. " - " .. Config.Drugs[drugType].label)
+            EndTextCommandSetBlipName(blip)
+            
+            -- Dodaj target (opcjonalnie, jeśli włączony w konfiguracji)
+            if Config.UseTarget then
+                exports['qb-target']:AddCircleZone("package_" .. drugType .. "_" .. _,
+                    packageSpot.coords,
+                    1.5,
+                    {
+                        name = "package_" .. drugType .. "_" .. _,
+                        debugPoly = Config.Debug,
+                    },
+                    {
+                        options = {
+                            {
+                                type = "client",
+                                icon = "fas fa-hand",
+                                label = Lang:t("target.package") .. " " .. Config.Drugs[drugType].label,
+                                action = function()
+                                    StartPackaging(drugType, packageSpot.coords)
+                                end
+                            },
+                        },
+                        distance = 2.0
+                    }
+                )
+            end
+        end
     end
 end
 
@@ -577,16 +435,6 @@ RegisterNetEvent('kubi-drugs:client:policeAlert', function(coords, message)
     end
 end)
 
--- Czyszczenie blipów
-local function ClearAllBlips()
-    for id, blip in pairs(LocationBlips) do
-        if DoesBlipExist(blip) then
-            RemoveBlip(blip)
-        end
-    end
-    LocationBlips = {}
-end
-
 -- Event wywoływany po załadowaniu skryptu
 AddEventHandler('onResourceStart', function(resourceName)
     if GetCurrentResourceName() ~= resourceName then return end
@@ -608,14 +456,316 @@ RegisterNetEvent('QBCore:Client:OnPlayerUnload', function()
     isHarvesting = false
     isProcessing = false
     isPackaging = false
+    processingDrug = nil
+    processingType = nil
+    processingLabName = nil
+    processingLabLevel = nil
     securityToken = nil
-    ClearAllBlips()
 end)
 
--- Event wywoływany przy wyładowaniu zasobu
-AddEventHandler('onResourceStop', function(resourceName)
-    if GetCurrentResourceName() ~= resourceName then return end
+-- Funkcja inicjująca proces przetwarzania narkotyków w standardowej lokalizacji
+function StartProcess(drugType, processType, locationIndex)
+    if isProcessing then
+        QBCore.Functions.Notify(Lang:t("error.already_processing"), "error")
+        return
+    end
     
-    -- Czyszczenie blipów
-    ClearAllBlips()
+    if not securityToken then
+        GetSecurityToken(function(token)
+            TriggerServerEvent('kubi-drugs:server:startProcess', token, drugType, processType, locationIndex)
+        end)
+    else
+        TriggerServerEvent('kubi-drugs:server:startProcess', securityToken, drugType, processType, locationIndex)
+        ResetSecurityToken()
+    end
+end
+
+-- Funkcja inicjująca proces przetwarzania narkotyków w laboratorium
+function StartLabProcess(drugType, labName, processType, labLevel)
+    if isProcessing then
+        QBCore.Functions.Notify(Lang:t("error.already_processing"), "error")
+        return
+    end
+    
+    if not securityToken then
+        GetSecurityToken(function(token)
+            TriggerServerEvent('kubi-drugs:server:startLabProcess', token, drugType, labName, processType, labLevel)
+        end)
+    else
+        TriggerServerEvent('kubi-drugs:server:startLabProcess', securityToken, drugType, labName, processType, labLevel)
+        ResetSecurityToken()
+    end
+end
+
+-- Funkcja do sprzedaży narkotyków
+function SellDrug(drugType, dealerId, quality)
+    if isProcessing then
+        QBCore.Functions.Notify(Lang:t("error.already_processing"), "error")
+        return
+    end
+    
+    if not securityToken then
+        GetSecurityToken(function(token)
+            TriggerServerEvent('kubi-drugs:server:sellDrug', token, drugType, dealerId, quality)
+        end)
+    else
+        TriggerServerEvent('kubi-drugs:server:sellDrug', securityToken, drugType, dealerId, quality)
+        ResetSecurityToken()
+    end
+end
+
+-- Funkcja do zakupu materiałów/sprzętu
+function BuyMaterial(item, price, dealerId)
+    if isProcessing then
+        QBCore.Functions.Notify(Lang:t("error.already_processing"), "error")
+        return
+    end
+    
+    if not securityToken then
+        GetSecurityToken(function(token)
+            TriggerServerEvent('kubi-drugs:server:buyMaterial', token, item, price, dealerId)
+        end)
+    else
+        TriggerServerEvent('kubi-drugs:server:buyMaterial', securityToken, item, price, dealerId)
+        ResetSecurityToken()
+    end
+end
+
+-- Event obsługujący procesowanie narkotyków
+RegisterNetEvent('kubi-drugs:client:processing', function(drugType, time, processType, labName, labLevel)
+    isProcessing = true
+    processingDrug = drugType
+    processingType = processType
+    processingLabName = labName
+    processingLabLevel = labLevel
+    
+    -- Wybierz odpowiednią nazwę procesu w zależności od typu procesu
+    local processName = ""
+    if processType == "harvest" then
+        processName = Lang:t("info.harvesting")
+    elseif processType == "process" then
+        processName = Lang:t("info.processing")
+    elseif processType == "package" or processType == "premium_package" then
+        processName = Lang:t("info.packaging")
+    elseif processType == "concentrate" then
+        processName = Lang:t("info.concentrating")
+    elseif processType == "purify" then
+        processName = Lang:t("info.purifying")
+    elseif processType == "crystallize" then
+        processName = Lang:t("info.crystallizing")
+    elseif processType == "refine" then
+        processName = Lang:t("info.refining")
+    elseif processType == "distill" then
+        processName = Lang:t("info.distilling")
+    elseif processType == "dry" then
+        processName = Lang:t("info.drying")
+    elseif processType == "grind" then
+        processName = Lang:t("info.grinding")
+    elseif processType == "press" then
+        processName = Lang:t("info.pressing")
+    elseif processType == "color" then
+        processName = Lang:t("info.coloring")
+    elseif processType == "inject" then
+        processName = Lang:t("info.preparing_inject")
+    elseif processType == "blotter" then
+        processName = Lang:t("info.preparing_blotter")
+    elseif processType == "capsule" then
+        processName = Lang:t("info.filling_capsules")
+    end
+    
+    -- Pobierz dane o narkotyku
+    local drugData = Config.Drugs[drugType]
+    if not drugData then return end
+    
+    -- Wyświetl ostrzeżenie o wybuchu dla niebezpiecznych narkotyków
+    if drugData.explodeChance and drugData.explodeChance > 10 then
+        QBCore.Functions.Notify(Lang:t("info.explosion_warning"), "error")
+    end
+    
+    -- Pasek postępu
+    QBCore.Functions.Progressbar("drug_processing", processName, time * 1000, false, true, {
+        disableMovement = true,
+        disableCarMovement = true,
+        disableMouse = false,
+        disableCombat = true,
+    }, {
+        animDict = "mini@repair",
+        anim = "fixing_a_ped",
+        flags = 16,
+    }, {}, {}, function() -- Done
+        -- Zatrzymanie animacji
+        StopAnimTask(PlayerPedId(), "mini@repair", "fixing_a_ped", 1.0)
+        
+        -- Uzyskanie nowego tokenu bezpieczeństwa
+        GetSecurityToken(function(token)
+            -- Poinformowanie serwera o zakończeniu procesu
+            TriggerServerEvent('kubi-drugs:server:finishProcess', token, processingDrug, processingType, processingLabName, processingLabLevel)
+            
+            -- Resetowanie zmiennych
+            isProcessing = false
+            processingDrug = nil
+            processingType = nil
+            processingLabName = nil
+            processingLabLevel = nil
+            ResetSecurityToken()
+        end)
+    end, function() -- Cancel
+        -- Zatrzymanie animacji
+        StopAnimTask(PlayerPedId(), "mini@repair", "fixing_a_ped", 1.0)
+        
+        -- Resetowanie zmiennych
+        isProcessing = false
+        processingDrug = nil
+        processingType = nil
+        processingLabName = nil
+        processingLabLevel = nil
+        
+        QBCore.Functions.Notify(Lang:t("error.process_canceled"), "error")
+    end)
+end)
+
+-- Event do obsługi eksplozji w laboratorium
+RegisterNetEvent('kubi-drugs:client:labExplosion', function()
+    -- Efekt eksplozji
+    local coords = GetEntityCoords(PlayerPedId())
+    
+    -- Efekt wizualny eksplozji
+    AddExplosion(coords.x, coords.y, coords.z, 7, 1.0, true, false, 1.0)
+    
+    -- Efekt obrażeń dla gracza (50% zdrowia)
+    local health = GetEntityHealth(PlayerPedId())
+    local newHealth = math.max(100, health - 100) -- Minimum 100 (granica śmierci w FiveM)
+    SetEntityHealth(PlayerPedId(), newHealth)
+    
+    -- Powiadomienie
+    QBCore.Functions.Notify("Nastąpiła eksplozja w laboratorium!", "error")
+end)
+
+-- Event do tworzenia blipów na mapie dla laboratoriów i dealerów
+RegisterNetEvent('kubi-drugs:client:createBlips', function()
+    -- Usuwanie starych blipów
+    local existingBlips = exports['qb-core']:GetBlips()
+    for _, blip in ipairs(existingBlips) do
+        if DoesBlipExist(blip) and GetBlipSprite(blip) == 140 then -- 140 to id ikony narkotyków
+            RemoveBlip(blip)
+        end
+    end
+    
+    -- Tworzenie blipów dla laboratoriów
+    if Config.ShowLabBlips then
+        for _, lab in ipairs(Config.Labs) do
+            local blip = AddBlipForCoord(lab.coords.x, lab.coords.y, lab.coords.z)
+            SetBlipSprite(blip, 499) -- Lab icon
+            SetBlipDisplay(blip, 4)
+            SetBlipScale(blip, 0.7)
+            SetBlipColour(blip, 5) -- Yellow
+            SetBlipAsShortRange(blip, true)
+            BeginTextCommandSetBlipName("STRING")
+            AddTextComponentString(Lang:t("info.lab_blip"))
+            EndTextCommandSetBlipName(blip)
+        end
+    end
+    
+    -- Tworzenie blipów dla dealerów
+    if Config.ShowDealerBlips then
+        for i, dealer in ipairs(Config.Dealers) do
+            local blip = AddBlipForCoord(dealer.coords.x, dealer.coords.y, dealer.coords.z)
+            SetBlipSprite(blip, 140) -- Drug dealer icon
+            SetBlipDisplay(blip, 4)
+            SetBlipScale(blip, 0.7)
+            SetBlipColour(blip, 2) -- Green
+            SetBlipAsShortRange(blip, true)
+            BeginTextCommandSetBlipName("STRING")
+            AddTextComponentString(Lang:t("info.dealer_blip"))
+            EndTextCommandSetBlipName(blip)
+        end
+    end
+end)
+
+-- Event do rejestracji targetów dla laboratoriów i dealerów
+RegisterNetEvent('kubi-drugs:client:registerTargets', function()
+    -- Rejestracja targetów dla laboratoriów
+    for i, lab in ipairs(Config.Labs) do
+        exports['qb-target']:AddBoxZone("lab_" .. i, vector3(lab.coords.x, lab.coords.y, lab.coords.z), 2.0, 2.0, {
+            name = "lab_" .. i,
+            heading = lab.coords.w,
+            debugPoly = false,
+            minZ = lab.coords.z - 1.0,
+            maxZ = lab.coords.z + 1.0,
+        }, {
+            options = {
+                {
+                    type = "client",
+                    event = "kubi-drugs:client:openLabMenu",
+                    icon = "fas fa-flask",
+                    label = Lang:t("target.access_lab"),
+                    lab = lab,
+                    labName = lab.name
+                }
+            },
+            distance = 2.5
+        })
+    end
+    
+    -- Rejestracja targetów dla dealerów
+    for i, dealer in ipairs(Config.Dealers) do
+        exports['qb-target']:AddBoxZone("dealer_" .. i, vector3(dealer.coords.x, dealer.coords.y, dealer.coords.z), 1.0, 1.0, {
+            name = "dealer_" .. i,
+            heading = dealer.coords.w,
+            debugPoly = false,
+            minZ = dealer.coords.z - 1.0,
+            maxZ = dealer.coords.z + 1.0,
+        }, {
+            options = {
+                {
+                    type = "client",
+                    event = "kubi-drugs:client:openDealerMenu",
+                    icon = "fas fa-user-secret",
+                    label = Lang:t("target.talk_dealer"),
+                    dealer = dealer,
+                    dealerId = i
+                }
+            },
+            distance = 2.0
+        })
+    end
+end)
+
+-- Event do tworzenia pedów dealerów
+RegisterNetEvent('kubi-drugs:client:spawnDealers', function()
+    -- Tworzenie pedów dla dealerów
+    for i, dealer in ipairs(Config.Dealers) do
+        RequestModel(dealer.model)
+        while not HasModelLoaded(dealer.model) do
+            Wait(0)
+        end
+        
+        local ped = CreatePed(4, dealer.model, dealer.coords.x, dealer.coords.y, dealer.coords.z - 1.0, dealer.coords.w, false, true)
+        SetEntityHeading(ped, dealer.coords.w)
+        FreezeEntityPosition(ped, true)
+        SetEntityInvincible(ped, true)
+        SetBlockingOfNonTemporaryEvents(ped, true)
+        
+        -- Dodanie scenariusza dla peda
+        if dealer.scenario then
+            TaskStartScenarioInPlace(ped, dealer.scenario, 0, true)
+        end
+    end
+end)
+
+-- Eventy dla obsługi menu
+RegisterNetEvent('kubi-drugs:client:startProcess', function(data)
+    StartProcess(data.drugType, data.processType, data.locationIndex)
+end)
+
+RegisterNetEvent('kubi-drugs:client:startLabProcess', function(data)
+    StartLabProcess(data.drugType, data.labName, data.processType, data.labLevel)
+end)
+
+RegisterNetEvent('kubi-drugs:client:sellDrug', function(data)
+    SellDrug(data.drugType, data.dealerId, data.quality)
+end)
+
+RegisterNetEvent('kubi-drugs:client:buyMaterial', function(data)
+    BuyMaterial(data.item, data.price, data.dealerId)
 end) 

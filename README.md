@@ -4,11 +4,7 @@ System narkotyków dla serwera FiveM opartego na frameworku QBCore, umożliwiaj�
 
 ## Funkcje
 
-- **Zaawansowane zabezpieczenia serwerowe**: 
-  - System tokenów bezpieczeństwa zapobiegający oszustwom i wstrzykiwaniu eventów
-  - Zaszyfrowane lokalizacje przechowywane wyłącznie po stronie serwera
-  - Indywidualny klucz szyfrowania dla każdego gracza
-  - Ochrona przed dump'owaniem lokalizacji
+- **Zabezpieczenia serwerowe**: System tokenów bezpieczeństwa zapobiegający oszustwom i wstrzykiwaniu eventów
 - **Trzy rodzaje narkotyków**: Marihuana, Kokaina i Metamfetamina
 - **Pełny cykl produkcyjny**: Zbieranie, przetwarzanie, pakowanie i sprzedaż
 - **Konfigurowalny system dealerów**: Dealerzy z własnymi godzinami pracy i obsługiwanymi narkotykami
@@ -72,6 +68,7 @@ Wszystkie ustawienia można modyfikować w pliku `config.lua`:
 - **Config.Debug** - Tryb debugowania
 - **Config.UseTarget** - Używa qb-target zamiast tekstu 3D
 - **Config.Drugs** - Konfiguracja narkotyków (czasy, ceny, itd.)
+- **Config.Locations** - Lokalizacje zbierania, przetwarzania i pakowania
 - **Config.Dealers** - Konfiguracja dealerów
 - **Config.MinCops** - Minimalna liczba policjantów na służbie
 - **Config.PoliceCallChance** - Szansa na wezwanie policji
@@ -84,14 +81,10 @@ Wszystkie ustawienia można modyfikować w pliku `config.lua`:
 Skrypt zawiera zaawansowane zabezpieczenia po stronie serwera:
 
 - System tokenów bezpieczeństwa do autoryzacji każdego żądania
-- Lokalizacje narkotyków przechowywane wyłącznie po stronie serwera
-- Dynamiczne szyfrowanie współrzędnych z unikalnym kluczem dla każdego gracza
-- Pobieranie tylko niezbędnych danych lokalizacji na żądanie
 - Weryfikacja pozycji gracza w momencie wykonywania akcji
 - Wykrywanie i logowanie prób manipulacji
 - Automatyczne wyrzucanie/banowanie graczy próbujących oszukiwać
 - Pełne logowanie incydentów bezpieczeństwa
-- Ochrona przed dump'owaniem danych serwera
 
 ## Autorzy
 
