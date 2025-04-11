@@ -10,6 +10,9 @@ local processingLabName = nil
 local processingLabLevel = nil
 local securityToken = nil
 
+-- System reputacji
+local PlayerReputation = {}
+
 -- Funkcja pobierająca token bezpieczeństwa z serwera
 local function GetSecurityToken(cb)
     if securityToken then
@@ -768,4 +771,205 @@ end)
 
 RegisterNetEvent('kubi-drugs:client:buyMaterial', function(data)
     BuyMaterial(data.item, data.price, data.dealerId)
+end)
+
+-- Funkcja do obsługi ucieczki dealera
+function HandleDealerRun(dealerName, runSpeed, surrenderDistance)
+    local dealerPed = GetDealerPed(dealerName)
+    if not dealerPed then return end
+    
+    -- Ustaw cel ucieczki
+    local escapeCoords = GetRandomEscapePoint()
+    
+    -- Rozpocznij ucieczkę
+    TaskGoToLocation(dealerPed, escapeCoords.x, escapeCoords.y, escapeCoords.z, runSpeed, -1, 0.0, 0.0)
+    
+    -- Sprawdź czy dealer się podda
+    Citizen.CreateThread(function()
+        while true do
+            Citizen.Wait(1000)
+            
+            local playerCoords = GetEntityCoords(PlayerPedId())
+            local dealerCoords = GetEntityCoords(dealerPed)
+            local distance = #(playerCoords - dealerCoords)
+            
+            -- Jeśli gracz jest wystarczająco blisko i ma wycelowaną broń
+            if distance <= surrenderDistance and IsPlayerFreeAiming(PlayerId()) then
+                -- Dealer się poddaje
+                ClearPedTasks(dealerPed)
+                TaskPlayAnim(dealerPed, "random@mugging3", "handsup_standing_base", 8.0, -8.0, -1, 1, 0, false, false, false)
+                
+                -- Dodaj opcję przeszukania przez qb-target
+                exports['qb-target']:AddTargetEntity(dealerPed, {
+                    options = {
+                        {
+                            type = "client",
+                            event = "kubi-drugs:client:searchDealer",
+                            icon = "fas fa-search",
+                            label = "Przeszukaj dealera",
+                            dealerName = dealerName
+                        }
+                    },
+                    distance = 2.0
+                })
+                
+                break
+            end
+            
+            -- Jeśli dealer dotarł do celu ucieczki
+            if #(dealerCoords - escapeCoords) < 2.0 then
+                DeleteEntity(dealerPed)
+                break
+            end
+        end
+    end)
+end
+
+-- Funkcja do pobierania losowego punktu ucieczki
+function GetRandomEscapePoint()
+    local playerCoords = GetEntityCoords(PlayerPedId())
+    local angle = math.random() * math.pi * 2
+    local distance = math.random(50, 100)
+    
+    local x = playerCoords.x + math.cos(angle) * distance
+    local y = playerCoords.y + math.sin(angle) * distance
+    local z = playerCoords.z
+    
+    return vector3(x, y, z)
+end
+
+-- Event do ucieczki dealera
+RegisterNetEvent('kubi-drugs:client:dealerRun', function(dealerName, runSpeed, surrenderDistance)
+    HandleDealerRun(dealerName, runSpeed, surrenderDistance)
+end)
+
+-- Event do przeszukiwania dealera
+RegisterNetEvent('kubi-drugs:client:searchDealer', function(data)
+    TriggerServerEvent('kubi-drugs:server:searchDealer', data.dealerName)
+end)
+
+-- Funkcja do aktualizacji reputacji
+function UpdateReputation(dealerName, points)
+    TriggerServerEvent('kubi-drugs:server:updateReputation', dealerName, points)
+end
+
+-- Funkcja do sprawdzania reputacji
+function GetReputation(dealerName)
+    return PlayerReputation[dealerName] or 0
+end
+
+-- System transportu
+local ActiveTransport = nil
+
+-- Funkcja do rozpoczynania transportu
+function StartTransport(transportType, transportName, items)
+    TriggerServerEvent('kubi-drugs:server:startTransport', transportType, transportName, items)
+end
+
+-- Funkcja do obsługi kontroli policyjnej
+function HandlePoliceCheck(vehicle)
+    local hidingSpot = GetVehicleHidingSpot(vehicle)
+    if not hidingSpot then return false end
+    
+    local detectionChance = Config.Transport.policeChecks.detectionChance[hidingSpot]
+    if math.random() <= detectionChance then
+        -- Wykryto narkotyki
+        TriggerEvent('police:client:SeizeCash', source)
+        return true
+    end
+    
+    return false
+end
+
+-- System bezpieczeństwa
+local LabSecurity = {}
+
+-- Funkcja do instalowania systemu bezpieczeństwa
+function InstallSecurity(labId, securityType, securityName)
+    TriggerServerEvent('kubi-drugs:server:installSecurity', labId, securityType, securityName)
+end
+
+-- Funkcja do obsługi alarmu
+function HandleAlarm(labId)
+    if LabSecurity[labId] and LabSecurity[labId].alarm then
+        -- Odtwórz dźwięk alarmu
+        PlaySoundFrontend(-1, "ALARM_1", "HUD_MINI_GAME_SOUNDSET", true)
+        
+        -- Wyświetl powiadomienie
+        QBCore.Functions.Notify('Alarm został aktywowany!', 'error')
+    end
+end
+
+-- Funkcja do obsługi pułapki
+function HandleTrap(labId, trapName)
+    if LabSecurity[labId] and LabSecurity[labId].trap and LabSecurity[labId].trap[trapName] then
+        local trap = LabSecurity[labId].trap[trapName]
+        
+        -- Zastosuj obrażenia
+        ApplyDamageToPlayer(trap.config.damage)
+        
+        -- Efekty wizualne
+        if trapName == 'gas_trap' then
+            StartScreenEffect('DrugsDrivingIn', 3000, false)
+        elseif trapName == 'electric_trap' then
+            StartScreenEffect('ExplosionJosh3', 1000, false)
+        elseif trapName == 'explosive_trap' then
+            StartScreenEffect('ExplosionJosh3', 2000, false)
+            ShakeGameplayCam('SMALL_EXPLOSION_SHAKE', 1.0)
+        end
+    end
+end
+
+-- Eventy
+RegisterNetEvent('kubi-drugs:client:updateReputation', function(dealerName, points)
+    if not PlayerReputation[dealerName] then
+        PlayerReputation[dealerName] = 0
+    end
+    PlayerReputation[dealerName] = PlayerReputation[dealerName] + points
+end)
+
+RegisterNetEvent('kubi-drugs:client:policeAlert', function(labId)
+    if QBCore.Functions.GetPlayerData().job.name == 'police' then
+        -- Wyświetl powiadomienie dla policji
+        QBCore.Functions.Notify('Alarm w laboratorium narkotykowym!', 'police')
+        
+        -- Dodaj znacznik na mapie
+        local lab = Config.Labs[labId]
+        if lab then
+            local blip = AddBlipForCoord(lab.coords.x, lab.coords.y, lab.coords.z)
+            SetBlipSprite(blip, 161)
+            SetBlipColour(blip, 1)
+            SetBlipScale(blip, 1.0)
+            BeginTextCommandSetBlipName("STRING")
+            AddTextComponentString("Alarm w laboratorium")
+            EndTextCommandSetBlipName(blip)
+            
+            -- Usuń znacznik po 5 minutach
+            SetTimeout(300000, function()
+                RemoveBlip(blip)
+            end)
+        end
+    end
+end)
+
+-- Komendy
+RegisterCommand('checkreputation', function()
+    local dealerName = GetCurrentDealer()
+    if dealerName then
+        local reputation = GetReputation(dealerName)
+        local level = GetReputationLevel(reputation)
+        QBCore.Functions.Notify('Twoja reputacja u dealera: ' .. level.name .. ' (' .. reputation .. ' punktów)', 'primary')
+    end
+end)
+
+RegisterCommand('installsecurity', function(args)
+    local labId = tonumber(args[1])
+    local securityType = args[2]
+    local securityName = args[3]
+    
+    if labId and securityType and securityName then
+        InstallSecurity(labId, securityType, securityName)
+    else
+        QBCore.Functions.Notify('Użycie: /installsecurity [id_laboratorium] [typ] [nazwa]', 'error')
+    end
 end) 

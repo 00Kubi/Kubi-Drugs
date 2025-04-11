@@ -595,4 +595,683 @@ AddEventHandler('onResourceStart', function(resourceName)
         QBCore.Functions.AddItem(name, data)
         print('Zarejestrowano przedmiot: ' .. name)
     end
+end)
+
+-- Tabela przechowująca informacje o laboratoriach graczy
+local PlayerLabs = {}
+
+-- Funkcja do kupowania laboratorium
+function BuyLab(source, labName)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return false end
+    
+    -- Znajdź laboratorium w konfiguracji
+    local lab = nil
+    for _, v in ipairs(Config.Labs) do
+        if v.name == labName then
+            lab = v
+            break
+        end
+    end
+    
+    if not lab then return false end
+    
+    -- Sprawdź czy gracz ma wystarczająco pieniędzy
+    if Player.PlayerData.money.bank < lab.price then
+        TriggerClientEvent('QBCore:Notify', source, "Nie masz wystarczająco pieniędzy", "error")
+        return false
+    end
+    
+    -- Sprawdź czy gracz już nie ma tego laboratorium
+    if PlayerLabs[source] and PlayerLabs[source][labName] then
+        TriggerClientEvent('QBCore:Notify', source, "Już posiadasz to laboratorium", "error")
+        return false
+    end
+    
+    -- Pobierz opłatę
+    Player.Functions.RemoveMoney('bank', lab.price)
+    
+    -- Dodaj laboratorium do gracza
+    if not PlayerLabs[source] then
+        PlayerLabs[source] = {}
+    end
+    
+    PlayerLabs[source][labName] = {
+        name = labName,
+        upgrades = {
+            equipment = 1,
+            security = 1,
+            staff = 1
+        },
+        production = {
+            active = false,
+            currentDrug = nil,
+            startTime = nil,
+            endTime = nil
+        }
+    }
+    
+    -- Zapisz w bazie danych
+    local citizenid = Player.PlayerData.citizenid
+    exports.oxmysql:execute('INSERT INTO player_labs (citizenid, lab_name, upgrades) VALUES (?, ?, ?)',
+        {citizenid, labName, json.encode(PlayerLabs[source][labName].upgrades)})
+    
+    TriggerClientEvent('QBCore:Notify', source, "Kupiłeś laboratorium: " .. lab.label, "success")
+    return true
+end
+
+-- Funkcja do ulepszania laboratorium
+function UpgradeLab(source, labName, upgradeType)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return false end
+    
+    -- Sprawdź czy gracz ma laboratorium
+    if not PlayerLabs[source] or not PlayerLabs[source][labName] then
+        TriggerClientEvent('QBCore:Notify', source, "Nie posiadasz tego laboratorium", "error")
+        return false
+    end
+    
+    -- Znajdź laboratorium w konfiguracji
+    local lab = nil
+    for _, v in ipairs(Config.Labs) do
+        if v.name == labName then
+            lab = v
+            break
+        end
+    end
+    
+    if not lab then return false end
+    
+    -- Znajdź ulepszenie
+    local upgrade = nil
+    for _, v in ipairs(lab.upgrades) do
+        if v.name == upgradeType then
+            upgrade = v
+            break
+        end
+    end
+    
+    if not upgrade then return false end
+    
+    -- Sprawdź aktualny poziom
+    local currentLevel = PlayerLabs[source][labName].upgrades[upgradeType]
+    if currentLevel >= #upgrade.levels then
+        TriggerClientEvent('QBCore:Notify', source, "Osiągnąłeś maksymalny poziom tego ulepszenia", "error")
+        return false
+    end
+    
+    -- Sprawdź koszt następnego poziomu
+    local nextLevel = upgrade.levels[currentLevel + 1]
+    if Player.PlayerData.money.bank < nextLevel.price then
+        TriggerClientEvent('QBCore:Notify', source, "Nie masz wystarczająco pieniędzy", "error")
+        return false
+    end
+    
+    -- Pobierz opłatę
+    Player.Functions.RemoveMoney('bank', nextLevel.price)
+    
+    -- Zaktualizuj poziom ulepszenia
+    PlayerLabs[source][labName].upgrades[upgradeType] = currentLevel + 1
+    
+    -- Zapisz w bazie danych
+    local citizenid = Player.PlayerData.citizenid
+    exports.oxmysql:execute('UPDATE player_labs SET upgrades = ? WHERE citizenid = ? AND lab_name = ?',
+        {json.encode(PlayerLabs[source][labName].upgrades), citizenid, labName})
+    
+    TriggerClientEvent('QBCore:Notify', source, "Ulepszyłeś " .. upgrade.label .. " do poziomu " .. (currentLevel + 1), "success")
+    return true
+end
+
+-- Funkcja do rozpoczynania produkcji
+function StartProduction(source, labName, drugType)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return false end
+    
+    -- Sprawdź czy gracz ma laboratorium
+    if not PlayerLabs[source] or not PlayerLabs[source][labName] then
+        TriggerClientEvent('QBCore:Notify', source, "Nie posiadasz tego laboratorium", "error")
+        return false
+    end
+    
+    -- Sprawdź czy laboratorium nie jest już w produkcji
+    if PlayerLabs[source][labName].production.active then
+        TriggerClientEvent('QBCore:Notify', source, "Laboratorium jest już w produkcji", "error")
+        return false
+    end
+    
+    -- Znajdź laboratorium w konfiguracji
+    local lab = nil
+    for _, v in ipairs(Config.Labs) do
+        if v.name == labName then
+            lab = v
+            break
+        end
+    end
+    
+    if not lab then return false end
+    
+    -- Sprawdź czy narkotyk może być produkowany w tym laboratorium
+    local canProduceDrug = false
+    for _, labDrug in ipairs(lab.drugs) do
+        if labDrug == drugType then
+            canProduceDrug = true
+            break
+        end
+    end
+    
+    if not canProduceDrug then
+        TriggerClientEvent('QBCore:Notify', source, "Ten narkotyk nie może być produkowany w tym laboratorium", "error")
+        return false
+    end
+    
+    -- Sprawdź czy gracz ma wymagane przedmioty
+    local drugData = Config.Drugs[drugType]
+    if not drugData then return false end
+    
+    local canProcess = true
+    local removeItems = {}
+    
+    for _, itemData in ipairs(drugData.requiredItems.process) do
+        local item = Player.Functions.GetItemByName(itemData.name)
+        if not item or item.amount < itemData.amount then
+            canProcess = false
+            break
+        end
+        
+        if not itemData.return then
+            table.insert(removeItems, {
+                name = itemData.name,
+                amount = itemData.amount
+            })
+        end
+    end
+    
+    if not canProcess then
+        TriggerClientEvent('QBCore:Notify', source, "Nie masz wymaganych przedmiotów", "error")
+        return false
+    end
+    
+    -- Usuń wymagane przedmioty
+    for _, item in ipairs(removeItems) do
+        Player.Functions.RemoveItem(item.name, item.amount)
+        TriggerClientEvent('inventory:client:ItemBox', source, QBCore.Shared.Items[item.name], "remove", item.amount)
+    end
+    
+    -- Oblicz czas produkcji
+    local processTime = drugData.processTime
+    local equipmentLevel = PlayerLabs[source][labName].upgrades.equipment
+    local staffLevel = PlayerLabs[source][labName].upgrades.staff
+    
+    -- Zastosuj bonusy z ulepszeń
+    local equipmentBonus = lab.upgrades[1].levels[equipmentLevel].benefits.processSpeed
+    local staffBonus = lab.upgrades[3].levels[staffLevel].benefits.productionSpeed
+    
+    processTime = math.floor(processTime / (equipmentBonus * staffBonus))
+    
+    -- Rozpocznij produkcję
+    PlayerLabs[source][labName].production = {
+        active = true,
+        currentDrug = drugType,
+        startTime = os.time(),
+        endTime = os.time() + processTime
+    }
+    
+    -- Zapisz w bazie danych
+    local citizenid = Player.PlayerData.citizenid
+    exports.oxmysql:execute('UPDATE player_labs SET production = ? WHERE citizenid = ? AND lab_name = ?',
+        {json.encode(PlayerLabs[source][labName].production), citizenid, labName})
+    
+    -- Uruchom timer produkcji
+    SetTimeout(processTime * 1000, function()
+        if PlayerLabs[source] and PlayerLabs[source][labName] and PlayerLabs[source][labName].production.active then
+            FinishProduction(source, labName)
+        end
+    end)
+    
+    TriggerClientEvent('QBCore:Notify', source, "Rozpoczęto produkcję " .. drugData.label, "success")
+    return true
+end
+
+-- Funkcja do kończenia produkcji
+function FinishProduction(source, labName)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return false end
+    
+    -- Sprawdź czy gracz ma laboratorium
+    if not PlayerLabs[source] or not PlayerLabs[source][labName] then
+        return false
+    end
+    
+    local production = PlayerLabs[source][labName].production
+    if not production.active then return false end
+    
+    -- Znajdź laboratorium w konfiguracji
+    local lab = nil
+    for _, v in ipairs(Config.Labs) do
+        if v.name == labName then
+            lab = v
+            break
+        end
+    end
+    
+    if not lab then return false end
+    
+    -- Pobierz dane o narkotyku
+    local drugData = Config.Drugs[production.currentDrug]
+    if not drugData then return false end
+    
+    -- Sprawdź czy produkcja się powiodła
+    local success = CheckProcessSuccess(source, production.currentDrug, lab.upgrades[1].levels[PlayerLabs[source][labName].upgrades.equipment].benefits.failChanceReduction)
+    
+    if not success then
+        -- Sprawdź czy nastąpi eksplozja
+        if CheckExplosion(source, production.currentDrug) then
+            TriggerClientEvent('kubi-drugs:client:labExplosion', source)
+        end
+        
+        PlayerLabs[source][labName].production = {
+            active = false,
+            currentDrug = nil,
+            startTime = nil,
+            endTime = nil
+        }
+        
+        -- Zapisz w bazie danych
+        local citizenid = Player.PlayerData.citizenid
+        exports.oxmysql:execute('UPDATE player_labs SET production = ? WHERE citizenid = ? AND lab_name = ?',
+            {json.encode(PlayerLabs[source][labName].production), citizenid, labName})
+        
+        return false
+    end
+    
+    -- Generuj jakość narkotyku
+    local drugQuality = GenerateDrugQuality(source, production.currentDrug, PlayerLabs[source][labName].upgrades.equipment)
+    
+    -- Przyznaj nagrody
+    if drugData.rewardItems.process then
+        for _, rewardItem in ipairs(drugData.rewardItems.process) do
+            local amount = rewardItem.amount
+            
+            -- Jeśli ilość jest zakresem, losuj wartość
+            if type(amount) == "table" and amount.min and amount.max then
+                amount = math.random(amount.min, amount.max)
+            end
+            
+            -- Zastosuj bonusy z ulepszeń
+            local staffBonus = lab.upgrades[3].levels[PlayerLabs[source][labName].upgrades.staff].benefits.staffEfficiency
+            amount = math.floor(amount * staffBonus)
+            
+            -- Dodaj przedmiot
+            if Player.Functions.AddItem(rewardItem.name, amount) then
+                TriggerClientEvent('inventory:client:ItemBox', source, QBCore.Shared.Items[rewardItem.name], "add", amount)
+            end
+        end
+    end
+    
+    -- Zresetuj produkcję
+    PlayerLabs[source][labName].production = {
+        active = false,
+        currentDrug = nil,
+        startTime = nil,
+        endTime = nil
+    }
+    
+    -- Zapisz w bazie danych
+    local citizenid = Player.PlayerData.citizenid
+    exports.oxmysql:execute('UPDATE player_labs SET production = ? WHERE citizenid = ? AND lab_name = ?',
+        {json.encode(PlayerLabs[source][labName].production), citizenid, labName})
+    
+    -- Powiadom gracza
+    TriggerClientEvent('QBCore:Notify', source, "Produkcja zakończona. Jakość: " .. drugQuality.label, "success")
+    return true
+end
+
+-- Funkcja do wczytywania laboratoriów gracza
+function LoadPlayerLabs(source)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return end
+    
+    local citizenid = Player.PlayerData.citizenid
+    
+    exports.oxmysql:execute('SELECT * FROM player_labs WHERE citizenid = ?', {citizenid}, function(result)
+        if result and #result > 0 then
+            PlayerLabs[source] = {}
+            
+            for _, v in ipairs(result) do
+                PlayerLabs[source][v.lab_name] = {
+                    name = v.lab_name,
+                    upgrades = json.decode(v.upgrades),
+                    production = json.decode(v.production)
+                }
+            end
+        end
+    end)
+end
+
+-- Event wywoływany po zalogowaniu gracza
+RegisterNetEvent('QBCore:Server:PlayerLoaded', function()
+    local src = source
+    LoadPlayerLabs(src)
+end)
+
+-- Event wywoływany po wylogowaniu gracza
+RegisterNetEvent('QBCore:Server:OnPlayerUnload', function()
+    local src = source
+    PlayerLabs[src] = nil
+end)
+
+-- Event do kupowania laboratorium
+RegisterNetEvent('kubi-drugs:server:buyLab', function(labName)
+    local src = source
+    BuyLab(src, labName)
+end)
+
+-- Event do ulepszania laboratorium
+RegisterNetEvent('kubi-drugs:server:upgradeLab', function(labName, upgradeType)
+    local src = source
+    UpgradeLab(src, labName, upgradeType)
+end)
+
+-- Event do rozpoczynania produkcji
+RegisterNetEvent('kubi-drugs:server:startProduction', function(labName, drugType)
+    local src = source
+    StartProduction(src, labName, drugType)
+end)
+
+-- Tworzenie tabeli w bazie danych przy uruchomieniu skryptu
+AddEventHandler('onResourceStart', function(resourceName)
+    if GetCurrentResourceName() ~= resourceName then return end
+    
+    -- Tworzenie tabeli dla laboratoriów
+    exports.oxmysql:execute([[
+        CREATE TABLE IF NOT EXISTS player_labs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            citizenid VARCHAR(50) NOT NULL,
+            lab_name VARCHAR(50) NOT NULL,
+            upgrades LONGTEXT NOT NULL,
+            production LONGTEXT NOT NULL,
+            UNIQUE(citizenid, lab_name)
+        )
+    ]])
+end)
+
+-- Funkcja do obsługi kradzieży przez dealera
+function HandleDealerSteal(source, dealerName, drugType, amount)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return false end
+    
+    -- Znajdź dealera w konfiguracji
+    local dealer = nil
+    for _, v in ipairs(Config.Dealers) do
+        if v.name == dealerName then
+            dealer = v
+            break
+        end
+    end
+    
+    if not dealer then return false end
+    
+    -- Sprawdź czy dealer może ukraść
+    if math.random() > dealer.stealChance then
+        return false
+    end
+    
+    -- Oblicz ile sztuk zostanie ukradzionych
+    local stolenAmount = math.random(dealer.stealAmount.min, dealer.stealAmount.max)
+    if stolenAmount > amount then
+        stolenAmount = amount
+    end
+    
+    -- Usuń przedmioty z ekwipunku gracza
+    Player.Functions.RemoveItem(drugType, stolenAmount)
+    TriggerClientEvent('inventory:client:ItemBox', source, QBCore.Shared.Items[drugType], "remove", stolenAmount)
+    
+    -- Powiadom gracza
+    TriggerClientEvent('QBCore:Notify', source, "Dealer ukradł Ci " .. stolenAmount .. " sztuk " .. QBCore.Shared.Items[drugType].label, "error")
+    
+    -- Uruchom ucieczkę dealera
+    TriggerClientEvent('kubi-drugs:client:dealerRun', source, dealerName, dealer.runSpeed, dealer.surrenderDistance)
+    
+    return true
+end
+
+-- Funkcja do przeszukiwania dealera
+function SearchDealer(source, dealerName)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return false end
+    
+    -- Znajdź dealera w konfiguracji
+    local dealer = nil
+    for _, v in ipairs(Config.Dealers) do
+        if v.name == dealerName then
+            dealer = v
+            break
+        end
+    end
+    
+    if not dealer then return false end
+    
+    -- Losuj przedmioty które dealer ma przy sobie
+    local foundItems = {}
+    for _, item in ipairs(dealer.searchItems) do
+        if math.random() < 0.5 then -- 50% szansa na znalezienie każdego przedmiotu
+            local amount = math.random(1, 3)
+            table.insert(foundItems, {
+                name = item,
+                amount = amount
+            })
+        end
+    end
+    
+    -- Dodaj znalezione przedmioty do ekwipunku gracza
+    for _, item in ipairs(foundItems) do
+        if Player.Functions.AddItem(item.name, item.amount) then
+            TriggerClientEvent('inventory:client:ItemBox', source, QBCore.Shared.Items[item.name], "add", item.amount)
+        end
+    end
+    
+    -- Powiadom gracza
+    if #foundItems > 0 then
+        TriggerClientEvent('QBCore:Notify', source, "Znalazłeś przedmioty przy dealerze", "success")
+    else
+        TriggerClientEvent('QBCore:Notify', source, "Nie znalazłeś nic wartościowego", "error")
+    end
+    
+    return true
+end
+
+-- Event do obsługi kradzieży przez dealera
+RegisterNetEvent('kubi-drugs:server:dealerSteal', function(dealerName, drugType, amount)
+    local src = source
+    HandleDealerSteal(src, dealerName, drugType, amount)
+end)
+
+-- Event do przeszukiwania dealera
+RegisterNetEvent('kubi-drugs:server:searchDealer', function(dealerName)
+    local src = source
+    SearchDealer(src, dealerName)
+end)
+
+-- System reputacji
+local PlayerReputation = {}
+
+-- Funkcja do aktualizacji reputacji gracza u dealera
+function UpdatePlayerReputation(source, dealerName, points)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return end
+    
+    if not PlayerReputation[source] then
+        PlayerReputation[source] = {}
+    end
+    
+    if not PlayerReputation[source][dealerName] then
+        PlayerReputation[source][dealerName] = 0
+    end
+    
+    PlayerReputation[source][dealerName] = PlayerReputation[source][dealerName] + points
+    
+    -- Zapisz reputację w bazie danych
+    MySQL.Async.execute('INSERT INTO player_reputation (citizenid, dealer_name, points) VALUES (@citizenid, @dealerName, @points) ON DUPLICATE KEY UPDATE points = @points', {
+        ['@citizenid'] = Player.PlayerData.citizenid,
+        ['@dealerName'] = dealerName,
+        ['@points'] = PlayerReputation[source][dealerName]
+    })
+end
+
+-- Funkcja do pobierania poziomu reputacji
+function GetReputationLevel(points)
+    for i = #Config.Reputation.levels, 1, -1 do
+        if points >= Config.Reputation.levels[i].minPoints then
+            return Config.Reputation.levels[i]
+        end
+    end
+    return Config.Reputation.levels[1]
+end
+
+-- System transportu
+local ActiveTransports = {}
+
+-- Funkcja do rozpoczynania transportu
+function StartTransport(source, transportType, transportName, items)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return false end
+    
+    local transportConfig
+    if transportType == 'courier' then
+        transportConfig = Config.Transport.couriers[transportName]
+    elseif transportType == 'convoy' then
+        transportConfig = Config.Transport.convoys[transportName]
+    end
+    
+    if not transportConfig then return false end
+    
+    -- Sprawdź czy gracz ma wystarczająco pieniędzy
+    if not Player.Functions.RemoveMoney('cash', transportConfig.price) then
+        return false
+    end
+    
+    -- Utwórz nowy transport
+    local transportId = #ActiveTransports + 1
+    ActiveTransports[transportId] = {
+        source = source,
+        type = transportType,
+        config = transportConfig,
+        items = items,
+        startTime = os.time(),
+        status = 'in_progress'
+    }
+    
+    -- Rozpocznij proces transportu
+    Citizen.CreateThread(function()
+        local transportTime = math.random(300, 600) -- 5-10 minut
+        Citizen.Wait(transportTime * 1000)
+        
+        if ActiveTransports[transportId] then
+            -- Sprawdź czy transport się powiódł
+            if math.random() <= transportConfig.reliability then
+                -- Transport udany
+                GiveTransportItems(source, items)
+                TriggerClientEvent('QBCore:Notify', source, 'Transport zakończony pomyślnie!', 'success')
+            else
+                -- Transport nieudany
+                TriggerClientEvent('QBCore:Notify', source, 'Transport został przechwycony!', 'error')
+            end
+            
+            ActiveTransports[transportId] = nil
+        end
+    end)
+    
+    return true
+end
+
+-- System bezpieczeństwa
+local LabSecurity = {}
+
+-- Funkcja do instalowania systemu bezpieczeństwa
+function InstallSecurity(source, labId, securityType, securityName)
+    local Player = QBCore.Functions.GetPlayer(source)
+    if not Player then return false end
+    
+    local securityConfig
+    if securityType == 'alarm' then
+        securityConfig = Config.Security.alarms[securityName]
+    elseif securityType == 'camera' then
+        securityConfig = Config.Security.cameras[securityName]
+    elseif securityType == 'trap' then
+        securityConfig = Config.Security.traps[securityName]
+    end
+    
+    if not securityConfig then return false end
+    
+    -- Sprawdź czy gracz ma wystarczająco pieniędzy
+    if not Player.Functions.RemoveMoney('cash', securityConfig.price) then
+        return false
+    end
+    
+    -- Zainstaluj system bezpieczeństwa
+    if not LabSecurity[labId] then
+        LabSecurity[labId] = {}
+    end
+    
+    LabSecurity[labId][securityType] = LabSecurity[labId][securityType] or {}
+    LabSecurity[labId][securityType][securityName] = {
+        config = securityConfig,
+        installed = true,
+        lastUsed = 0
+    }
+    
+    return true
+end
+
+-- Funkcja do sprawdzania bezpieczeństwa laboratorium
+function CheckLabSecurity(labId, intruderSource)
+    if not LabSecurity[labId] then return false end
+    
+    local securityTriggered = false
+    
+    -- Sprawdź alarmy
+    if LabSecurity[labId].alarm then
+        for alarmName, alarm in pairs(LabSecurity[labId].alarm) do
+            if alarm.installed and math.random() <= alarm.config.policeAlertChance then
+                TriggerClientEvent('kubi-drugs:client:policeAlert', -1, labId)
+                securityTriggered = true
+            end
+        end
+    end
+    
+    -- Sprawdź pułapki
+    if LabSecurity[labId].trap then
+        for trapName, trap in pairs(LabSecurity[labId].trap) do
+            if trap.installed and os.time() - trap.lastUsed >= trap.config.cooldown then
+                if math.random() <= 0.7 then -- 70% szansa na aktywację pułapki
+                    ApplyDamage(intruderSource, trap.config.damage)
+                    trap.lastUsed = os.time()
+                    securityTriggered = true
+                end
+            end
+        end
+    end
+    
+    return securityTriggered
+end
+
+-- Eventy
+RegisterNetEvent('kubi-drugs:server:updateReputation', function(dealerName, points)
+    local source = source
+    UpdatePlayerReputation(source, dealerName, points)
+end)
+
+RegisterNetEvent('kubi-drugs:server:startTransport', function(transportType, transportName, items)
+    local source = source
+    StartTransport(source, transportType, transportName, items)
+end)
+
+RegisterNetEvent('kubi-drugs:server:installSecurity', function(labId, securityType, securityName)
+    local source = source
+    InstallSecurity(source, labId, securityType, securityName)
+end)
+
+RegisterNetEvent('kubi-drugs:server:checkLabSecurity', function(labId)
+    local source = source
+    CheckLabSecurity(labId, source)
 end) 

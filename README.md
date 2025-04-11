@@ -1,95 +1,83 @@
 # Kubi-Drugs
 
-System narkotyków dla serwera FiveM opartego na frameworku QBCore, umożliwiający zbieranie, przetwarzanie, pakowanie i sprzedaż różnych rodzajów narkotyków z zabezpieczeniami po stronie serwera.
+Zaawansowany system narkotyków dla FiveM z QBCore Framework.
 
-## Funkcje
+## 🌟 Funkcje
 
-- **Zabezpieczenia serwerowe**: System tokenów bezpieczeństwa zapobiegający oszustwom i wstrzykiwaniu eventów
-- **Trzy rodzaje narkotyków**: Marihuana, Kokaina i Metamfetamina
-- **Pełny cykl produkcyjny**: Zbieranie, przetwarzanie, pakowanie i sprzedaż
-- **Konfigurowalny system dealerów**: Dealerzy z własnymi godzinami pracy i obsługiwanymi narkotykami
-- **Integracja z policją**: Możliwość wezwania policji podczas sprzedaży narkotyków
-- **Interaktywne menu**: Proste w obsłudze menu dla wszystkich interakcji
-- **Wsparcie dla qb-target**: Łatwe używanie systemu docelowania
-- **W pełni konfigurowalne**: Łatwa zmiana wszystkich parametrów w pliku konfiguracyjnym
+### 🏭 System Laboratoriów
+- Możliwość zakupu laboratoriów w różnych lokalizacjach
+- System ulepszeń (sprzęt, bezpieczeństwo, personel)
+- Realistyczna produkcja narkotyków
+- System jakości produktów
+- System rajdów policji
+- Możliwość eksplozji podczas produkcji
 
-## Instalacja
+### 💊 Narkotyki
+- Marihuana (uprawa, przetwarzanie, pakowanie)
+- Kokaina (zbieranie, przetwarzanie, pakowanie)
+- Metaamfetamina (produkcja, pakowanie)
+- Heroina (produkcja, pakowanie)
+- LSD (produkcja, pakowanie)
+- Ecstasy (produkcja, pakowanie)
+- Grzyby halucynogenne (zbieranie, przetwarzanie)
 
-1. Pobierz lub sklonuj repozytorium
-2. Umieść folder `kubi-drugs` w katalogu `resources` serwera
-3. Dodaj `ensure kubi-drugs` do pliku `server.cfg`
-4. Opcjonalnie: Dostosuj ustawienia w pliku `config.lua`
-5. Uruchom serwer
+### 🛠️ System Produkcji
+- Wymagane przedmioty do produkcji
+- System szans na sukces
+- System jakości produktów (słaba, standardowa, wysoka, premium)
+- Realistyczne czasy produkcji
+- System eksplozji i awarii
 
-## Zależności
+### 🏪 System Sprzedaży
+- Sprzedaż dealerom
+- System jakości i cen
+- System szans na sukces
+- System wezwań policji
+- System rajdów
 
-- [qb-core](https://github.com/qbcore-framework/qb-core)
-- [qb-target](https://github.com/qbcore-framework/qb-target) (opcjonalnie, ale zalecane)
-- [qb-menu](https://github.com/qbcore-framework/qb-menu)
-- [oxmysql](https://github.com/overextended/oxmysql)
+## 📋 Wymagania
+- QBCore Framework
+- oxmysql
+- qb-target
+- qb-menu
+- qb-input
 
-## Użytkowanie
+## 🔧 Instalacja
+1. Pobierz skrypt
+2. Umieść folder `kubi-drugs` w `resources`
+3. Dodaj `ensure kubi-drugs` do `server.cfg`
+4. Zaimportuj `kubi-drugs.sql` do bazy danych
+5. Zrestartuj serwer
 
-### Zbieranie
+## ⚙️ Konfiguracja
+Skrypt jest w pełni konfigurowalny w pliku `config.lua`. Możesz dostosować:
+- Ceny laboratoriów i ulepszeń
+- Czasy produkcji
+- Szanse na sukces
+- Jakość produktów
+- Ceny sprzedaży
+- I wiele więcej!
 
-1. Udaj się do jednej z lokalizacji zbierania zaznaczonych na mapie
-2. Użyj systemu targetowania lub menu kontekstowego, aby rozpocząć zbieranie
-3. Poczekaj, aż pasek postępu się zakończy
-4. Otrzymasz surowe materiały do dalszej obróbki
+## 🎮 Użycie
+1. Kup laboratorium w wybranej lokalizacji
+2. Ulepsz je według potrzeb
+3. Zbierz wymagane przedmioty
+4. Rozpocznij produkcję
+5. Sprzedawaj produkty dealerom
 
-### Przetwarzanie
+## 📸 Zrzuty ekranu
+*Dodaj zrzuty ekranu z gry*
 
-1. Udaj się do jednej z lokalizacji przetwarzania zaznaczonych na mapie
-2. Upewnij się, że masz wystarczającą ilość surowych materiałów
-3. Użyj systemu targetowania lub menu kontekstowego, aby rozpocząć przetwarzanie
-4. Poczekaj, aż pasek postępu się zakończy
-5. Surowe materiały zostaną przetworzone
+## 🤝 Wsparcie
+W razie problemów lub pytań, skontaktuj się z nami na Discordzie.
 
-### Pakowanie
+## 📜 Licencja
+Ten projekt jest objęty licencją MIT. Zobacz plik `LICENSE` aby uzyskać więcej informacji.
 
-1. Udaj się do jednej z lokalizacji pakowania zaznaczonych na mapie
-2. Upewnij się, że masz wystarczającą ilość przetworzonych narkotyków i woreczków foliowych
-3. Użyj systemu targetowania lub menu kontekstowego, aby rozpocząć pakowanie
-4. Poczekaj, aż pasek postępu się zakończy
-5. Otrzymasz zapakowane narkotyki gotowe do sprzedaży
+## 👥 Autorzy
+- Kubi
+- *Dodaj innych autorów jeśli są*
 
-### Sprzedaż
-
-1. Udaj się do jednego z dealerów zaznaczonych na mapie
-2. Upewnij się, że jest w godzinach pracy dealera
-3. Rozpocznij rozmowę z dealerem
-4. Wybierz narkotyk, który chcesz sprzedać
-5. Ukończ transakcję i otrzymaj pieniądze
-
-## Konfiguracja
-
-Wszystkie ustawienia można modyfikować w pliku `config.lua`:
-
-- **Config.Debug** - Tryb debugowania
-- **Config.UseTarget** - Używa qb-target zamiast tekstu 3D
-- **Config.Drugs** - Konfiguracja narkotyków (czasy, ceny, itd.)
-- **Config.Locations** - Lokalizacje zbierania, przetwarzania i pakowania
-- **Config.Dealers** - Konfiguracja dealerów
-- **Config.MinCops** - Minimalna liczba policjantów na służbie
-- **Config.PoliceCallChance** - Szansa na wezwanie policji
-- **Config.SecurityTokenExpiry** - Czas ważności tokenu bezpieczeństwa
-- **Config.MaxAllowedErrors** - Maksymalna liczba błędów przed wyrzuceniem gracza
-- **Config.BanOnSuspectedCheating** - Czy banować za próby oszustwa
-
-## Zabezpieczenia
-
-Skrypt zawiera zaawansowane zabezpieczenia po stronie serwera:
-
-- System tokenów bezpieczeństwa do autoryzacji każdego żądania
-- Weryfikacja pozycji gracza w momencie wykonywania akcji
-- Wykrywanie i logowanie prób manipulacji
-- Automatyczne wyrzucanie/banowanie graczy próbujących oszukiwać
-- Pełne logowanie incydentów bezpieczeństwa
-
-## Autorzy
-
-- **Kubi** - Główny twórca
-
-## Licencja
-
-Ten projekt jest objęty licencją MIT - szczegóły w pliku LICENSE. 
+## 🙏 Podziękowania
+- QBCore Team
+- Wszystkim testerom i osobom, które pomogły w rozwoju skryptu 

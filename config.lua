@@ -522,53 +522,292 @@ Config.Drugs = {
 -- Konfiguracja laboratoriów
 Config.Labs = {
     {
-        name = "small_lab",
-        label = "Małe laboratorium",
-        location = vector4(1012.7, -3195.6, -38.99, 6.32),
-        level = 1,
-        drugs = {"weed", "cocaine", "mushrooms"},
-        equipmentRequired = {"beaker", "test_tube"},
-        failChanceReduction = 5,
-        qualityBoost = 1,
-        unlockPrice = 0 -- Za darmo
+        name = "lab_1",
+        label = "Laboratorium w Sandy Shores",
+        coords = vector3(1968.0, 3819.0, 33.0),
+        price = 1000000,
+        upgrades = {
+            {
+                name = "equipment",
+                label = "Sprzęt laboratoryjny",
+                levels = {
+                    {
+                        level = 1,
+                        price = 500000,
+                        benefits = {
+                            processSpeed = 1.0,
+                            qualityBoost = 0,
+                            failChanceReduction = 0,
+                            explosionChanceReduction = 0
+                        }
+                    },
+                    {
+                        level = 2,
+                        price = 1000000,
+                        benefits = {
+                            processSpeed = 1.2,
+                            qualityBoost = 10,
+                            failChanceReduction = 10,
+                            explosionChanceReduction = 10
+                        }
+                    },
+                    {
+                        level = 3,
+                        price = 2000000,
+                        benefits = {
+                            processSpeed = 1.4,
+                            qualityBoost = 20,
+                            failChanceReduction = 20,
+                            explosionChanceReduction = 20
+                        }
+                    }
+                }
+            },
+            {
+                name = "security",
+                label = "System bezpieczeństwa",
+                levels = {
+                    {
+                        level = 1,
+                        price = 300000,
+                        benefits = {
+                            policeAlertChance = 0.5,
+                            raidChance = 0.3,
+                            securityTime = 30
+                        }
+                    },
+                    {
+                        level = 2,
+                        price = 600000,
+                        benefits = {
+                            policeAlertChance = 0.3,
+                            raidChance = 0.2,
+                            securityTime = 45
+                        }
+                    },
+                    {
+                        level = 3,
+                        price = 1200000,
+                        benefits = {
+                            policeAlertChance = 0.1,
+                            raidChance = 0.1,
+                            securityTime = 60
+                        }
+                    }
+                }
+            },
+            {
+                name = "staff",
+                label = "Personel",
+                levels = {
+                    {
+                        level = 1,
+                        price = 400000,
+                        benefits = {
+                            productionSpeed = 1.0,
+                            autoProduction = false,
+                            staffEfficiency = 0.8
+                        }
+                    },
+                    {
+                        level = 2,
+                        price = 800000,
+                        benefits = {
+                            productionSpeed = 1.2,
+                            autoProduction = true,
+                            staffEfficiency = 0.9
+                        }
+                    },
+                    {
+                        level = 3,
+                        price = 1600000,
+                        benefits = {
+                            productionSpeed = 1.4,
+                            autoProduction = true,
+                            staffEfficiency = 1.0
+                        }
+                    }
+                }
+            }
+        },
+        equipmentRequired = {
+            "basic_chemicals",
+            "acid",
+            "beaker",
+            "distilling_kit"
+        },
+        drugs = {
+            "weed",
+            "cocaine",
+            "meth",
+            "heroin",
+            "lsd",
+            "ecstasy"
+        }
     },
     {
-        name = "medium_lab",
-        label = "Średnie laboratorium",
-        location = vector4(998.9, -3199.8, -38.99, 2.5),
-        level = 2,
-        drugs = {"weed", "cocaine", "meth", "mushrooms"},
-        equipmentRequired = {"beaker", "test_tube", "bunsen_burner", "scale"},
-        failChanceReduction = 10,
-        qualityBoost = 2,
-        unlockPrice = 50000
-    },
-    {
-        name = "big_lab",
-        label = "Duże laboratorium",
-        location = vector4(1003.0, -3201.4, -38.99, 180.37),
-        level = 3,
-        drugs = {"weed", "cocaine", "meth", "heroin", "ecstasy"},
-        equipmentRequired = {"beaker", "test_tube", "bunsen_burner", "scale", "filter"},
-        failChanceReduction = 15,
-        qualityBoost = 3,
-        unlockPrice = 150000
-    },
-    {
-        name = "premium_lab",
-        label = "Profesjonalne laboratorium",
-        location = vector4(969.5, -147.0, 74.23, 54.7),
-        level = 4,
-        drugs = {"weed", "cocaine", "meth", "heroin", "lsd", "ecstasy"},
-        equipmentRequired = {"beaker", "test_tube", "bunsen_burner", "scale", "filter", "distilling_kit"},
-        failChanceReduction = 20,
-        qualityBoost = 4,
-        unlockPrice = 500000
+        name = "lab_2",
+        label = "Laboratorium w Grapeseed",
+        coords = vector3(1687.0, 4865.0, 42.0),
+        price = 1500000,
+        upgrades = {
+            {
+                name = "equipment",
+                label = "Sprzęt laboratoryjny",
+                levels = {
+                    {
+                        level = 1,
+                        price = 750000,
+                        benefits = {
+                            processSpeed = 1.1,
+                            qualityBoost = 5,
+                            failChanceReduction = 5,
+                            explosionChanceReduction = 5
+                        }
+                    },
+                    {
+                        level = 2,
+                        price = 1500000,
+                        benefits = {
+                            processSpeed = 1.3,
+                            qualityBoost = 15,
+                            failChanceReduction = 15,
+                            explosionChanceReduction = 15
+                        }
+                    },
+                    {
+                        level = 3,
+                        price = 3000000,
+                        benefits = {
+                            processSpeed = 1.5,
+                            qualityBoost = 25,
+                            failChanceReduction = 25,
+                            explosionChanceReduction = 25
+                        }
+                    }
+                }
+            },
+            {
+                name = "security",
+                label = "System bezpieczeństwa",
+                levels = {
+                    {
+                        level = 1,
+                        price = 450000,
+                        benefits = {
+                            policeAlertChance = 0.4,
+                            raidChance = 0.25,
+                            securityTime = 35
+                        }
+                    },
+                    {
+                        level = 2,
+                        price = 900000,
+                        benefits = {
+                            policeAlertChance = 0.2,
+                            raidChance = 0.15,
+                            securityTime = 50
+                        }
+                    },
+                    {
+                        level = 3,
+                        price = 1800000,
+                        benefits = {
+                            policeAlertChance = 0.05,
+                            raidChance = 0.05,
+                            securityTime = 75
+                        }
+                    }
+                }
+            },
+            {
+                name = "staff",
+                label = "Personel",
+                levels = {
+                    {
+                        level = 1,
+                        price = 600000,
+                        benefits = {
+                            productionSpeed = 1.1,
+                            autoProduction = false,
+                            staffEfficiency = 0.85
+                        }
+                    },
+                    {
+                        level = 2,
+                        price = 1200000,
+                        benefits = {
+                            productionSpeed = 1.3,
+                            autoProduction = true,
+                            staffEfficiency = 0.95
+                        }
+                    },
+                    {
+                        level = 3,
+                        price = 2400000,
+                        benefits = {
+                            productionSpeed = 1.5,
+                            autoProduction = true,
+                            staffEfficiency = 1.1
+                        }
+                    }
+                }
+            }
+        },
+        equipmentRequired = {
+            "basic_chemicals",
+            "acid",
+            "beaker",
+            "distilling_kit",
+            "advanced_chemicals",
+            "vacuum_bag"
+        },
+        drugs = {
+            "weed",
+            "cocaine",
+            "meth",
+            "heroin",
+            "lsd",
+            "ecstasy",
+            "mushrooms"
+        }
     }
 }
 
 -- Konfiguracja sprzedawców
 Config.Dealers = {
+    {
+        name = "dealer_1",
+        label = "Dealer 1",
+        coords = vector3(123.0, 456.0, 789.0),
+        heading = 90.0,
+        model = "g_m_y_mexgoon_01",
+        workingHours = {
+            start = 20, -- 20:00
+            finish = 4   -- 04:00
+        },
+        drugs = {
+            "weed",
+            "coke",
+            "meth"
+        },
+        qualityCheck = true,
+        priceBoost = 1.2,
+        stealChance = 0.15, -- 15% szansa na kradzież
+        stealAmount = {
+            min = 1,
+            max = 3
+        },
+        runSpeed = 1.0, -- Prędkość ucieczki dealera
+        surrenderDistance = 10.0, -- Odległość w której dealer się podda
+        searchItems = { -- Przedmioty które dealer może mieć przy sobie
+            "weed",
+            "coke",
+            "meth",
+            "money",
+            "phone"
+        }
+    },
     {
         coords = vector4(384.52, -761.65, 29.29, 359.26),
         ped = 'a_m_y_downtown_01',
@@ -629,3 +868,232 @@ Config.SecurityTokenExpiry = 5 * 60 -- 5 minut
 Config.SecurityTokenLength = 32 -- Długość tokenu bezpieczeństwa
 Config.MaxAllowedErrors = 3 -- Maksymalna liczba błędów przed wyrzuceniem gracza
 Config.BanOnSuspectedCheating = true -- Czy banować gracza przy podejrzeniu o oszukiwanie 
+
+-- System reputacji z dealerami
+Config.Reputation = {
+    -- Poziomy reputacji
+    levels = {
+        {name = "Nieznany", minPoints = 0, priceMultiplier = 1.0, maxItems = 1},
+        {name = "Nowy klient", minPoints = 100, priceMultiplier = 1.1, maxItems = 2},
+        {name = "Stały klient", minPoints = 500, priceMultiplier = 1.2, maxItems = 3},
+        {name = "Zaufany klient", minPoints = 1000, priceMultiplier = 1.3, maxItems = 4},
+        {name = "VIP", minPoints = 2000, priceMultiplier = 1.5, maxItems = 5}
+    },
+    -- Punkty za różne akcje
+    points = {
+        successfulSale = 10,
+        failedSale = -5,
+        attemptedScam = -50,
+        largeSale = 25, -- za sprzedaż powyżej 10 sztuk
+        regularCustomer = 5 -- bonus za regularne transakcje
+    }
+}
+
+-- System transportu
+Config.Transport = {
+    -- Kurierzy
+    couriers = {
+        {
+            name = "courier_1",
+            label = "Początkujący kurier",
+            price = 1000,
+            capacity = 5,
+            speed = 1.0,
+            reliability = 0.7
+        },
+        {
+            name = "courier_2",
+            label = "Doświadczony kurier",
+            price = 2500,
+            capacity = 10,
+            speed = 1.2,
+            reliability = 0.85
+        },
+        {
+            name = "courier_3",
+            label = "Profesjonalny kurier",
+            price = 5000,
+            capacity = 20,
+            speed = 1.5,
+            reliability = 0.95
+        }
+    },
+    -- Konwoje
+    convoys = {
+        {
+            name = "convoy_1",
+            label = "Mały konwój",
+            price = 5000,
+            capacity = 30,
+            guards = 2,
+            vehicles = 1,
+            reliability = 0.8
+        },
+        {
+            name = "convoy_2",
+            label = "Średni konwój",
+            price = 10000,
+            capacity = 60,
+            guards = 4,
+            vehicles = 2,
+            reliability = 0.9
+        },
+        {
+            name = "convoy_3",
+            label = "Duży konwój",
+            price = 20000,
+            capacity = 100,
+            guards = 6,
+            vehicles = 3,
+            reliability = 0.95
+        }
+    },
+    -- Kontrole policyjne
+    policeChecks = {
+        chance = 0.2, -- 20% szansa na kontrolę
+        checkPoints = {
+            vector3(123.0, 456.0, 789.0),
+            vector3(234.0, 567.0, 890.0),
+            vector3(345.0, 678.0, 901.0)
+        },
+        detectionChance = {
+            noHide = 1.0, -- 100% szansa wykrycia bez ukrycia
+            basicHide = 0.5, -- 50% szansa przy podstawowym ukryciu
+            advancedHide = 0.2 -- 20% szansa przy zaawansowanym ukryciu
+        }
+    },
+    -- Miejsca ukrycia w pojeździe
+    hidingSpots = {
+        {
+            name = "basic_hide",
+            label = "Podstawowe ukrycie",
+            price = 1000,
+            detectionChance = 0.5,
+            capacity = 5
+        },
+        {
+            name = "advanced_hide",
+            label = "Zaawansowane ukrycie",
+            price = 5000,
+            detectionChance = 0.2,
+            capacity = 15
+        },
+        {
+            name = "professional_hide",
+            label = "Profesjonalne ukrycie",
+            price = 15000,
+            detectionChance = 0.1,
+            capacity = 30
+        }
+    }
+}
+
+-- System bezpieczeństwa
+Config.Security = {
+    -- Alarmy
+    alarms = {
+        {
+            name = "basic_alarm",
+            label = "Podstawowy alarm",
+            price = 5000,
+            detectionRange = 30.0,
+            policeAlertChance = 0.7,
+            alertTime = 300 -- 5 minut
+        },
+        {
+            name = "advanced_alarm",
+            label = "Zaawansowany alarm",
+            price = 15000,
+            detectionRange = 50.0,
+            policeAlertChance = 0.9,
+            alertTime = 600 -- 10 minut
+        },
+        {
+            name = "professional_alarm",
+            label = "Profesjonalny alarm",
+            price = 30000,
+            detectionRange = 100.0,
+            policeAlertChance = 1.0,
+            alertTime = 900 -- 15 minut
+        }
+    },
+    -- Ochrona
+    guards = {
+        {
+            name = "guard_1",
+            label = "Początkujący ochroniarz",
+            price = 1000,
+            skill = 0.7,
+            weapons = {"WEAPON_PISTOL"}
+        },
+        {
+            name = "guard_2",
+            label = "Doświadczony ochroniarz",
+            price = 2500,
+            skill = 0.85,
+            weapons = {"WEAPON_PISTOL", "WEAPON_SMG"}
+        },
+        {
+            name = "guard_3",
+            label = "Elitarny ochroniarz",
+            price = 5000,
+            skill = 1.0,
+            weapons = {"WEAPON_PISTOL", "WEAPON_SMG", "WEAPON_CARBINERIFLE"}
+        }
+    },
+    -- Monitoring
+    cameras = {
+        {
+            name = "basic_camera",
+            label = "Podstawowa kamera",
+            price = 2000,
+            range = 20.0,
+            nightVision = false,
+            motionDetection = false
+        },
+        {
+            name = "advanced_camera",
+            label = "Zaawansowana kamera",
+            price = 5000,
+            range = 40.0,
+            nightVision = true,
+            motionDetection = true
+        },
+        {
+            name = "professional_camera",
+            label = "Profesjonalna kamera",
+            price = 10000,
+            range = 60.0,
+            nightVision = true,
+            motionDetection = true,
+            facialRecognition = true
+        }
+    },
+    -- Pułapki
+    traps = {
+        {
+            name = "gas_trap",
+            label = "Pułapka gazowa",
+            price = 3000,
+            damage = 50,
+            range = 10.0,
+            cooldown = 300 -- 5 minut
+        },
+        {
+            name = "electric_trap",
+            label = "Pułapka elektryczna",
+            price = 5000,
+            damage = 75,
+            range = 15.0,
+            cooldown = 600 -- 10 minut
+        },
+        {
+            name = "explosive_trap",
+            label = "Pułapka wybuchowa",
+            price = 10000,
+            damage = 100,
+            range = 20.0,
+            cooldown = 900 -- 15 minut
+        }
+    }
+} 
