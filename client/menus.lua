@@ -401,6 +401,62 @@ function OpenProductionMenu(drugType, locationType, locationIndex)
                         }
                     })
                 end
+            elseif drugType == "synthetic_cannabinoids" then
+                -- Synteza podstawowej struktury
+                if drugData.requiredItems["synthesize"] then
+                    table.insert(options, {
+                        title = Lang:t("target.synthesize"),
+                        description = "Rozpocznij syntezę syntetycznych kannabinoidów",
+                        event = "kubi-drugs:client:startProcess",
+                        args = {
+                            drugType = drugType,
+                            processType = "synthesize",
+                            locationIndex = locationIndex
+                        }
+                    })
+                end
+                
+                -- Reakcja łańcuchowa
+                if drugData.requiredItems["react"] then
+                    table.insert(options, {
+                        title = Lang:t("target.react"),
+                        description = "Przeprowadź reakcję łańcuchową",
+                        event = "kubi-drugs:client:startProcess",
+                        args = {
+                            drugType = drugType,
+                            processType = "react",
+                            locationIndex = locationIndex
+                        }
+                    })
+                end
+                
+                -- Stabilizacja i oczyszczanie
+                if drugData.requiredItems["stabilize"] then
+                    table.insert(options, {
+                        title = Lang:t("target.stabilize"),
+                        description = "Ustabilizuj i oczyść substancję",
+                        event = "kubi-drugs:client:startProcess",
+                        args = {
+                            drugType = drugType,
+                            processType = "stabilize",
+                            locationIndex = locationIndex
+                        }
+                    })
+                end
+                
+                -- Aplikacja na nośnik
+                if drugData.requiredItems["infuse"] then
+                    table.insert(options, {
+                        title = Lang:t("target.infuse"),
+                        description = "Nasącz nośnik substancją aktywną",
+                        event = "kubi-drugs:client:startProcess",
+                        args = {
+                            drugType = drugType,
+                            processType = "infuse",
+                            locationIndex = locationIndex
+                        }
+                    })
+                end
             end
         end
         
@@ -805,6 +861,66 @@ function OpenLabDrugMenu(labName, drugType)
                             drugType = drugType,
                             labName = labName,
                             processType = "distill",
+                            labLevel = labLevel
+                        }
+                    })
+                end
+            elseif drugType == "synthetic_cannabinoids" then
+                -- Synteza podstawowej struktury
+                if drugData.requiredItems["synthesize"] then
+                    table.insert(options, {
+                        title = Lang:t("target.synthesize"),
+                        description = "Rozpocznij syntezę syntetycznych kannabinoidów",
+                        event = "kubi-drugs:client:startLabProcess",
+                        args = {
+                            drugType = drugType,
+                            labName = labName,
+                            processType = "synthesize",
+                            labLevel = labLevel
+                        }
+                    })
+                end
+                
+                -- Reakcja łańcuchowa
+                if drugData.requiredItems["react"] then
+                    table.insert(options, {
+                        title = Lang:t("target.react"),
+                        description = "Przeprowadź reakcję łańcuchową",
+                        event = "kubi-drugs:client:startLabProcess",
+                        args = {
+                            drugType = drugType,
+                            labName = labName,
+                            processType = "react",
+                            labLevel = labLevel
+                        }
+                    })
+                end
+                
+                -- Stabilizacja i oczyszczanie
+                if drugData.requiredItems["stabilize"] then
+                    table.insert(options, {
+                        title = Lang:t("target.stabilize"),
+                        description = "Ustabilizuj i oczyść substancję",
+                        event = "kubi-drugs:client:startLabProcess",
+                        args = {
+                            drugType = drugType,
+                            labName = labName,
+                            processType = "stabilize",
+                            labLevel = labLevel
+                        }
+                    })
+                end
+                
+                -- Aplikacja na nośnik
+                if drugData.requiredItems["infuse"] then
+                    table.insert(options, {
+                        title = Lang:t("target.infuse"),
+                        description = "Nasącz nośnik substancją aktywną",
+                        event = "kubi-drugs:client:startLabProcess",
+                        args = {
+                            drugType = drugType,
+                            labName = labName,
+                            processType = "infuse",
                             labLevel = labLevel
                         }
                     })

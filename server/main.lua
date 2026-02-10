@@ -84,7 +84,7 @@ RegisterSecuredEvent('kubi-drugs:server:startProcess', function(source, drugType
     local processTime = 0
     if processType == "harvest" then
         processTime = drugData.harvestTime
-    elseif processType == "process" or processType == "concentrate" or processType == "purify" or processType == "crystallize" or processType == "refine" or processType == "distill" or processType == "dry" or processType == "grind" or processType == "press" or processType == "color" or processType == "crack" or processType == "blue_meth" then
+    elseif processType == "process" or processType == "concentrate" or processType == "purify" or processType == "crystallize" or processType == "refine" or processType == "distill" or processType == "dry" or processType == "grind" or processType == "press" or processType == "color" or processType == "crack" or processType == "blue_meth" or processType == "synthesize" or processType == "react" or processType == "stabilize" or processType == "infuse" then
         processTime = drugData.processTime
     elseif processType == "package" or processType == "premium_package" or processType == "inject" or processType == "blotter" or processType == "capsule" then
         processTime = drugData.packageTime
@@ -272,6 +272,14 @@ RegisterSecuredEvent('kubi-drugs:server:finishProcess', function(source, drugTyp
                     TriggerClientEvent('QBCore:Notify', src, Lang:t("success.pill_pressed", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
                 elseif processType == "color" then
                     TriggerClientEvent('QBCore:Notify', src, Lang:t("success.colored", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "synthesize" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.synthesized", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "react" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.reacted", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "stabilize" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.stabilized", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
+                elseif processType == "infuse" then
+                    TriggerClientEvent('QBCore:Notify', src, Lang:t("success.infused", {amount = amount, item = QBCore.Shared.Items[rewardItem.name].label}), "success")
                 end
             else
                 TriggerClientEvent('QBCore:Notify', src, Lang:t("error.no_space_inventory"), "error")
