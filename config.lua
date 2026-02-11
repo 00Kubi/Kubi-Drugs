@@ -50,6 +50,21 @@ Config.Chemicals = {
         label = 'Ciekła rtęć',
         weight = 200,
         description = 'Toksyczny metal używany w niektórych procesach chemicznych.'
+    },
+    ['chemical_precursor'] = {
+        label = 'Prekursor chemiczny',
+        weight = 75,
+        description = 'Rzadki prekursor używany do syntezy zaawansowanych substancji.'
+    },
+    ['carrier_herb'] = {
+        label = 'Zioło nośnikowe',
+        weight = 30,
+        description = 'Neutralne zioło używane jako nośnik dla substancji aktywnych.'
+    },
+    ['vape_liquid_base'] = {
+        label = 'Baza do e-liquidu',
+        weight = 100,
+        description = 'Płynna baza używana do tworzenia e-liquidów.'
     }
 }
 
@@ -516,6 +531,89 @@ Config.Drugs = {
         labRequired = false,
         quality = true,
         explodeChance = 0
+    },
+    ['synthetic_cannabinoids'] = {
+        label = 'Syntetyczne Kannabinoidy',
+        harvestTime = 60,
+        processTime = 150, -- Bardzo długi proces z powodu złożoności
+        packageTime = 35,
+        sellPrice = {min = 5000, max = 7500}, -- Najwyższe ceny ze względu na zaawansowanie
+        requiredItems = {
+            -- Krok 1: Zbieranie prekursorów chemicznych
+            harvest = {
+                {name = 'chemical_precursor', amount = 1}
+            },
+            -- Krok 2: Synteza podstawowej struktury
+            synthesize = {
+                {name = 'chemical_precursor', amount = 3},
+                {name = 'basic_chemicals', amount = 2},
+                {name = 'solvent', amount = 2},
+                {name = 'beaker', amount = 1, return = true},
+                {name = 'test_tube', amount = 1, return = true}
+            },
+            -- Krok 3: Reakcja łańcuchowa
+            react = {
+                {name = 'synthetic_base', amount = 1},
+                {name = 'lithium', amount = 1},
+                {name = 'acetone', amount = 1},
+                {name = 'bunsen_burner', amount = 1, return = true},
+                {name = 'beaker', amount = 1, return = true}
+            },
+            -- Krok 4: Stabilizacja i oczyszczanie
+            stabilize = {
+                {name = 'synthetic_compound', amount = 1},
+                {name = 'lye', amount = 1},
+                {name = 'filter', amount = 1},
+                {name = 'distilling_kit', amount = 1, return = true}
+            },
+            -- Krok 5: Aplikacja na nośnik
+            infuse = {
+                {name = 'synthetic_pure', amount = 1},
+                {name = 'solvent', amount = 1},
+                {name = 'carrier_herb', amount = 5}
+            },
+            -- Krok 6: Pakowanie standardowe
+            package = {
+                {name = 'synthetic_infused', amount = 2},
+                {name = 'plastic_bag', amount = 1}
+            },
+            -- Krok 7: Pakowanie premium (w formie e-liquidu)
+            premium_package = {
+                {name = 'synthetic_pure', amount = 1},
+                {name = 'vape_liquid_base', amount = 3},
+                {name = 'vacuum_bag', amount = 1},
+                {name = 'beaker', amount = 1, return = true}
+            }
+        },
+        rewardItems = {
+            harvest = {
+                {name = 'chemical_precursor', amount = {min = 1, max = 3}}
+            },
+            synthesize = {
+                {name = 'synthetic_base', amount = 1}
+            },
+            react = {
+                {name = 'synthetic_compound', amount = 1}
+            },
+            stabilize = {
+                {name = 'synthetic_pure', amount = 1}
+            },
+            infuse = {
+                {name = 'synthetic_infused', amount = 3}
+            },
+            package = {
+                {name = 'synthetic_packaged', amount = 1}
+            },
+            premium_package = {
+                {name = 'synthetic_vape', amount = 1}
+            }
+        },
+        failChance = 30, -- Bardzo wysoka szansa na niepowodzenie
+        labRequired = true, -- Wymaga zaawansowanego laboratorium
+        quality = true,
+        explodeChance = 25, -- Wysoka szansa na eksplozję z powodu niestabilnych chemikaliów
+        temperatureSensitive = true, -- Nowa cecha - wrażliwość na temperaturę
+        minLabLevel = 2 -- Wymaga laboratorium poziomu 2 lub wyższego
     }
 }
 
@@ -642,7 +740,8 @@ Config.Labs = {
             "meth",
             "heroin",
             "lsd",
-            "ecstasy"
+            "ecstasy",
+            "synthetic_cannabinoids"
         }
     },
     {
@@ -769,7 +868,8 @@ Config.Labs = {
             "heroin",
             "lsd",
             "ecstasy",
-            "mushrooms"
+            "mushrooms",
+            "synthetic_cannabinoids"
         }
     }
 }
@@ -848,7 +948,7 @@ Config.Dealers = {
         coords = vector4(2358.37, 3135.03, 48.21, 170.45),
         ped = 'g_m_y_mexgoon_03',
         scenario = 'WORLD_HUMAN_DRUG_DEALER',
-        drugs = {'cocaine', 'meth', 'heroin', 'lsd', 'ecstasy'},
+        drugs = {'cocaine', 'meth', 'heroin', 'lsd', 'ecstasy', 'synthetic_cannabinoids'},
         hours = {
             from = 22,
             to = 6
@@ -1097,3 +1197,38 @@ Config.Security = {
         }
     }
 } 
+-- Konfiguracja lokalizacji zbierania i przetwarzania
+Config.Locations = {
+    ['synthetic_cannabinoids'] = {
+        harvest = {
+            -- Lokalizacje zbierania prekursorów chemicznych (tajne laboratoria chemiczne, magazyny)
+            {
+                coords = vector3(1905.32, 4925.45, 48.87),
+                label = "Opuszczony magazyn chemiczny"
+            },
+            {
+                coords = vector3(2433.75, 4969.22, 46.81),
+                label = "Stara fabryka"
+            },
+            {
+                coords = vector3(1569.11, 2220.77, 78.82),
+                label = "Ukryte składowisko"
+            }
+        },
+        process = {
+            -- Lokalizacje przetwarzania (wymaga laboratorium)
+            -- Przetwarzanie odbywa się głównie w laboratoriach graczy
+        },
+        package = {
+            -- Lokalizacje pakowania
+            {
+                coords = vector3(1971.22, 3816.38, 33.43),
+                label = "Punkt pakowania - Sandy Shores"
+            },
+            {
+                coords = vector3(1653.89, 4853.27, 42.02),
+                label = "Punkt pakowania - Grapeseed"
+            }
+        }
+    }
+}

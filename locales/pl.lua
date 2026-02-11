@@ -43,6 +43,10 @@ local Translations = {
         blotter_infused = 'Nasączyłeś %{amount}x blotterów %{item}',
         pill_pressed = 'Sprasowałeś %{amount}x %{item} tabletek',
         colored = 'Zabarwiłeś %{amount}x %{item}',
+        synthesized = 'Zsyntetyzowałeś %{amount}x %{item}',
+        reacted = 'Przeprowadziłeś reakcję łańcuchową na %{amount}x %{item}',
+        stabilized = 'Ustabilizowałeś %{amount}x %{item}',
+        infused = 'Nasączyłeś nośnik %{amount}x %{item}',
     },
     info = {
         harvesting = 'Zbieranie...',
@@ -67,6 +71,11 @@ local Translations = {
         preparing_blotter = 'Nasączanie blotterów...',
         filling_capsules = 'Napełnianie kapsułek...',
         explosion_warning = 'UWAGA: Ten proces jest niebezpieczny. Istnieje ryzyko wybuchu!',
+        synthesizing = 'Synteza związku...',
+        reacting = 'Reakcja łańcuchowa...',
+        stabilizing = 'Stabilizacja...',
+        infusing = 'Nasączanie nośnika...',
+        temperature_critical = 'UWAGA: Temperatura krytyczna! Zachowaj ostrożność!',
     },
     target = {
         harvest = 'Zbieraj',
@@ -86,6 +95,10 @@ local Translations = {
         color = 'Barw',
         make_blotter = 'Nasącz blottery',
         fill_capsules = 'Napełnij kapsułki',
+        synthesize = 'Syntetyzuj',
+        react = 'Przeprowadź reakcję',
+        stabilize = 'Stabilizuj',
+        infuse = 'Nasącz nośnik',
     },
     menu = {
         harvest = 'Zbieraj',
